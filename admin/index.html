@@ -307,16 +307,33 @@
               class="w-full rounded-lg border border-slate-700 bg-slate-950 px-3 py-2 text-sm text-white outline-none focus:border-accent">
           </div>
           <div>
-            <label for="tgChatId" class="mb-1 block text-xs font-medium text-slate-300">Chat ID</label>
+            <label for="tgChatId" class="mb-1 block text-xs font-medium text-slate-300">Chat ID (grup/channel admin)</label>
             <input id="tgChatId" type="text" placeholder="mis. -1001234567890"
               class="w-full rounded-lg border border-slate-700 bg-slate-950 px-3 py-2 text-sm text-white outline-none focus:border-accent">
           </div>
           <div class="sm:col-span-2">
+            <label for="tgBotUsername" class="mb-1 block text-xs font-medium text-slate-300">Username Bot (tanpa @)</label>
+            <input id="tgBotUsername" type="text" placeholder="mis. robotAgentAnalist_bot"
+              class="w-full rounded-lg border border-slate-700 bg-slate-950 px-3 py-2 text-sm text-white outline-none focus:border-accent">
+            <p class="mt-1 text-[11px] text-slate-500">
+              Dipakai untuk link personal "hubungkan Telegram" yang dikirim otomatis ke email follower baru
+              (<code class="rounded bg-black/30 px-1 py-0.5">t.me/&lt;username&gt;?start=&lt;token&gt;</code>).
+            </p>
+          </div>
+          <div class="sm:col-span-2 flex flex-wrap items-center gap-2">
             <button type="submit"
               class="rounded-lg bg-accent px-3 py-2 text-sm font-semibold text-slate-950 transition hover:bg-accent-dark disabled:cursor-not-allowed disabled:opacity-60">
               Simpan Setting Telegram
             </button>
+            <button type="button" id="btnSetupTelegramWebhook"
+              class="rounded-lg border border-slate-700 px-3 py-2 text-sm font-medium text-slate-200 transition hover:border-accent hover:text-accent disabled:cursor-not-allowed disabled:opacity-60">
+              Setup Webhook Telegram
+            </button>
           </div>
+          <p class="sm:col-span-2 text-[11px] text-slate-500">
+            Klik "Setup Webhook Telegram" SEKALI setelah Bot Token diisi & disimpan, supaya follower yang klik link
+            "hubungkan Telegram" di email onboarding benar-benar tersambung ke sistem ini. Aman diklik ulang kapan saja.
+          </p>
         </form>
       </section>
 
@@ -536,6 +553,8 @@
       tgBotToken: document.getElementById('tgBotToken'),
       tgBotTokenBadge: document.getElementById('tgBotTokenBadge'),
       tgChatId: document.getElementById('tgChatId'),
+      tgBotUsername: document.getElementById('tgBotUsername'),
+      btnSetupTelegramWebhook: document.getElementById('btnSetupTelegramWebhook'),
 
       addFollowerForm: document.getElementById('addFollowerForm'),
       newFollowerEmail: document.getElementById('newFollowerEmail'),
@@ -923,6 +942,7 @@
       el.tgBotToken.value = '';
       el.tgBotTokenBadge.classList.toggle('hidden', !cfg.telegram_bot_token_set);
       el.tgChatId.value = cfg.telegram_chat_id || '';
+      el.tgBotUsername.value = cfg.telegram_bot_username || '';
     }
 
     function renderFollowersTable() {
@@ -935,17 +955,18 @@
         return;
       }
       followers.forEach(function (f) {
+        var isPending = f.status === 'pending';
         var isActive = f.status === 'active';
+        var badgeClass = isActive ? 'bg-emerald-500/15 text-emerald-400' :
+                          isPending ? 'bg-amber-500/15 text-amber-400' : 'bg-slate-700/50 text-slate-400';
+        var badgeText = isPending ? 'pending (perlu approve)' : (f.status || 'inactive');
         var tr = document.createElement('tr');
         tr.className = 'hover:bg-slate-800/40';
         tr.innerHTML =
           '<td class="whitespace-nowrap px-4 py-3 text-slate-200">' + escapeHtml(f.email || '-') + '</td>' +
           '<td class="whitespace-nowrap px-4 py-3 text-slate-300">' + escapeHtml(f.account_number || '-') + '</td>' +
           '<td class="whitespace-nowrap px-4 py-3">' +
-            '<span class="rounded-full px-2 py-0.5 text-xs font-semibold ' +
-              (isActive ? 'bg-emerald-500/15 text-emerald-400' : 'bg-slate-700/50 text-slate-400') + '">' +
-              (isActive ? 'active' : 'inactive') +
-            '</span>' +
+            '<span class="rounded-full px-2 py-0.5 text-xs font-semibold ' + badgeClass + '">' + escapeHtml(badgeText) + '</span>' +
           '</td>' +
           '<td class="whitespace-nowrap px-4 py-3 text-right">' +
             '<button type="button" data-detail-id="' + escapeHtml(f.id) + '" ' +
@@ -1053,7 +1074,7 @@
     el.telegramForm.addEventListener('submit', function (e) {
       e.preventDefault();
       var submitBtn = el.telegramForm.querySelector('button[type="submit"]');
-      var fields = { chat_id: el.tgChatId.value.trim() };
+      var fields = { chat_id: el.tgChatId.value.trim(), bot_username: el.tgBotUsername.value.trim() };
       if (el.tgBotToken.value !== '') fields.bot_token = el.tgBotToken.value;
       setButtonBusy(submitBtn, true, 'Menyimpan...', 'Simpan Setting Telegram');
       adminPost('update_telegram_config', fields)
@@ -1067,6 +1088,20 @@
         })
         .catch(function (err) { showToast(err.message || 'Gagal menyimpan setting Telegram.', 'error'); })
         .finally(function () { setButtonBusy(submitBtn, false, 'Menyimpan...', 'Simpan Setting Telegram'); });
+    });
+
+    // =====================================================================
+    // AKSI: SETUP WEBHOOK TELEGRAM (sekali, setelah Bot Token diisi)
+    // =====================================================================
+    el.btnSetupTelegramWebhook.addEventListener('click', function () {
+      setButtonBusy(el.btnSetupTelegramWebhook, true, 'Menyiapkan...', 'Setup Webhook Telegram');
+      adminPost('setup_telegram_webhook', { gas_url: state.gasUrl })
+        .then(function (data) {
+          if (!data || data.success !== true) throw new Error((data && data.error) || 'Gagal setup webhook Telegram.');
+          showToast('Webhook Telegram berhasil diaktifkan. Follower sekarang bisa klik link "hubungkan Telegram" di email mereka.', 'success');
+        })
+        .catch(function (err) { showToast(err.message || 'Gagal setup webhook Telegram.', 'error'); })
+        .finally(function () { setButtonBusy(el.btnSetupTelegramWebhook, false, 'Menyiapkan...', 'Setup Webhook Telegram'); });
     });
 
     // =====================================================================
@@ -1120,8 +1155,9 @@
       if (!f) { showToast('Follower tidak ditemukan (mungkin data sudah berubah, coba Refresh).', 'error'); return; }
       state.currentFollowerId = id;
 
-      el.fdStatus.textContent = f.status || '-';
-      el.fdStatus.className = f.status === 'active' ? 'font-semibold text-emerald-400' : 'font-semibold text-slate-400';
+      el.fdStatus.textContent = f.status === 'pending' ? 'pending (perlu approve)' : (f.status || '-');
+      el.fdStatus.className = f.status === 'active' ? 'font-semibold text-emerald-400' :
+        f.status === 'pending' ? 'font-semibold text-amber-400' : 'font-semibold text-slate-400';
 
       var conn = findConnectionForFollower(f);
       if (!conn) {

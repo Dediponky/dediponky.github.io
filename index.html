@@ -72,9 +72,9 @@
           class="rounded-lg border border-slate-700 px-3 py-1.5 text-sm font-medium text-slate-200 transition hover:border-accent hover:text-accent">
           Kontak
         </button>
-        <button id="btnLogin" type="button"
+        <button id="btnFollow" type="button"
           class="rounded-lg bg-accent px-3 py-1.5 text-sm font-semibold text-slate-950 transition hover:bg-accent-dark">
-          Login
+          Ngikut
         </button>
       </div>
     </div>
@@ -220,49 +220,64 @@
   </main>
 
   <!-- =====================================================================
-       MODAL LOGIN
-       CATATAN PENTING: Ini PLACEHOLDER UI SAJA. Backend auth belum ada di
-       Fase 1/2 (lihat CLAUDE.md §6, rencana fase). Form ini sengaja TIDAK:
-         - memvalidasi kredensial ke server manapun,
-         - berpura-pura login berhasil,
-         - menyimpan email/password ke localStorage/sessionStorage/cookie,
-         - mengirim kredensial ke endpoint apapun.
-       Submit hanya menampilkan pesan informasi ke user. Ganti fungsi
-       handleLoginSubmit() ini nanti kalau backend auth sudah siap.
+       MODAL "NGIKUT" (registrasi follower publik, self-service)
+       Submit fetch() POST ke backend (type: "register_follower", tanpa
+       token admin -- endpoint publik). Backend generate token EA otomatis,
+       simpan dengan status "pending", lalu kirim email berisi token + file
+       EA_Follower.ex5 terlampir + link hubungkan Telegram. Follower BARU
+       BISA MULAI TRADING setelah admin approve (lihat Webhook.gs
+       handleFollowerRegister_, CLAUDE.md §9b) -- form ini cuma mendaftar,
+       bukan langsung aktif.
   ===================================================================== -->
-  <div id="loginModal" class="fixed inset-0 z-50 hidden items-center justify-center p-4">
-    <div class="modal-backdrop absolute inset-0" data-close-modal="loginModal"></div>
+  <div id="followModal" class="fixed inset-0 z-50 hidden items-center justify-center p-4">
+    <div class="modal-backdrop absolute inset-0" data-close-modal="followModal"></div>
     <div class="relative w-full max-w-sm rounded-2xl border border-slate-800 bg-slate-900 p-5 shadow-xl">
       <div class="mb-4 flex items-center justify-between">
-        <h3 class="text-lg font-semibold text-white">Login</h3>
-        <button type="button" class="text-slate-400 hover:text-white" data-close-modal="loginModal" aria-label="Tutup">✕</button>
+        <h3 class="text-lg font-semibold text-white">Ngikut Sinyal Trading</h3>
+        <button type="button" class="text-slate-400 hover:text-white" data-close-modal="followModal" aria-label="Tutup">✕</button>
       </div>
 
       <p class="mb-4 rounded-lg border border-slate-700 bg-slate-800/60 p-2 text-xs text-slate-400">
-        Fitur login masih placeholder UI — backend autentikasi belum tersedia.
+        Daftar akun trading Anda untuk ikut menerima sinyal bot ini secara otomatis. Token EA & file EA
+        akan dikirim ke email Anda setelah submit. Akun baru perlu di-approve admin dulu sebelum mulai aktif.
       </p>
 
-      <form id="loginForm" class="space-y-3" novalidate>
+      <div id="followResultMsg" class="mb-3 hidden rounded-lg border p-2 text-xs"></div>
+
+      <form id="followForm" class="space-y-3" novalidate>
         <div>
-          <label for="loginEmail" class="mb-1 block text-xs font-medium text-slate-300">Email</label>
-          <input id="loginEmail" type="email" required
+          <label for="followEmail" class="mb-1 block text-xs font-medium text-slate-300">Email</label>
+          <input id="followEmail" type="email" required
             class="w-full rounded-lg border border-slate-700 bg-slate-950 px-3 py-2 text-sm text-white outline-none focus:border-accent"
             placeholder="nama@email.com">
-          <p id="loginEmailError" class="mt-1 hidden text-xs text-red-400">Email tidak valid.</p>
+          <p id="followEmailError" class="mt-1 hidden text-xs text-red-400">Email tidak valid.</p>
         </div>
         <div>
-          <label for="loginPassword" class="mb-1 block text-xs font-medium text-slate-300">Password</label>
-          <input id="loginPassword" type="password" required minlength="6"
+          <label for="followAccount" class="mb-1 block text-xs font-medium text-slate-300">No. Akun Trading</label>
+          <input id="followAccount" type="text" required
             class="w-full rounded-lg border border-slate-700 bg-slate-950 px-3 py-2 text-sm text-white outline-none focus:border-accent"
-            placeholder="Minimal 6 karakter">
-          <p id="loginPasswordError" class="mt-1 hidden text-xs text-red-400">Password minimal 6 karakter.</p>
+            placeholder="12345678">
+          <p id="followAccountError" class="mt-1 hidden text-xs text-red-400">No. Akun wajib diisi.</p>
+        </div>
+        <div>
+          <label for="followBroker" class="mb-1 block text-xs font-medium text-slate-300">Broker Server</label>
+          <input id="followBroker" type="text" required
+            class="w-full rounded-lg border border-slate-700 bg-slate-950 px-3 py-2 text-sm text-white outline-none focus:border-accent"
+            placeholder="mis. Exness-Real, ICMarketsSC-Demo">
+          <p id="followBrokerError" class="mt-1 hidden text-xs text-red-400">Broker Server wajib diisi.</p>
+        </div>
+        <div>
+          <label for="followPlatform" class="mb-1 block text-xs font-medium text-slate-300">Platform</label>
+          <select id="followPlatform"
+            class="w-full rounded-lg border border-slate-700 bg-slate-950 px-3 py-2 text-sm text-white outline-none focus:border-accent">
+            <option value="MT5">MT5</option>
+            <option value="MT4">MT4</option>
+          </select>
         </div>
 
-        <div id="loginResultMsg" class="hidden rounded-lg border border-accent/30 bg-accent/10 p-2 text-xs text-accent"></div>
-
-        <button type="submit"
-          class="w-full rounded-lg bg-accent px-3 py-2 text-sm font-semibold text-slate-950 transition hover:bg-accent-dark">
-          Masuk
+        <button type="submit" id="followSubmitBtn"
+          class="w-full rounded-lg bg-accent px-3 py-2 text-sm font-semibold text-slate-950 transition hover:bg-accent-dark disabled:cursor-not-allowed disabled:opacity-60">
+          Daftar Sekarang
         </button>
       </form>
     </div>
@@ -663,41 +678,98 @@
       modal.classList.remove('flex');
     }
 
-    document.getElementById('btnLogin').addEventListener('click', function () { openModal('loginModal'); });
+    document.getElementById('btnFollow').addEventListener('click', function () { openModal('followModal'); });
     document.getElementById('btnContact').addEventListener('click', function () { openModal('contactModal'); });
     document.querySelectorAll('[data-close-modal]').forEach(function (btn) {
       btn.addEventListener('click', function () { closeModal(btn.getAttribute('data-close-modal')); });
     });
     document.addEventListener('keydown', function (e) {
-      if (e.key === 'Escape') { closeModal('loginModal'); closeModal('contactModal'); }
+      if (e.key === 'Escape') { closeModal('followModal'); closeModal('contactModal'); }
     });
 
     // =====================================================================
-    // LOGIN FORM — PLACEHOLDER UI (lihat catatan besar di atas modal HTML).
-    // Tidak memanggil backend apapun, tidak menyimpan data di manapun.
+    // FORM "NGIKUT" — registrasi follower publik, self-service.
+    // POST type="register_follower" ke backend (tanpa token admin, memang
+    // endpoint publik). Backend generate token EA otomatis & simpan status
+    // "pending" (WAJIB di-approve admin dulu sebelum EA-nya bisa ambil
+    // sinyal, lihat Webhook.gs handleFollowerRegister_) -- form ini TIDAK
+    // pernah minta/kirim token dari sini, token selalu dibuat server-side.
     // =====================================================================
-    const loginForm = document.getElementById('loginForm');
-    const loginResultMsg = document.getElementById('loginResultMsg');
-    loginForm.addEventListener('submit', function (e) {
+    const followForm = document.getElementById('followForm');
+    const followSubmitBtn = document.getElementById('followSubmitBtn');
+    const followResultMsg = document.getElementById('followResultMsg');
+
+    function setFollowResult(message, isError) {
+      if (!message) { followResultMsg.classList.add('hidden'); return; }
+      followResultMsg.textContent = message;
+      followResultMsg.className = 'mb-3 rounded-lg border p-2 text-xs ' +
+        (isError ? 'border-red-500/40 bg-red-500/10 text-red-300' : 'border-emerald-500/40 bg-emerald-500/10 text-emerald-300');
+    }
+
+    followForm.addEventListener('submit', function (e) {
       e.preventDefault();
-      const email = document.getElementById('loginEmail');
-      const password = document.getElementById('loginPassword');
-      const emailError = document.getElementById('loginEmailError');
-      const passwordError = document.getElementById('loginPasswordError');
+      const email = document.getElementById('followEmail');
+      const account = document.getElementById('followAccount');
+      const broker = document.getElementById('followBroker');
+      const platform = document.getElementById('followPlatform');
+      const emailError = document.getElementById('followEmailError');
+      const accountError = document.getElementById('followAccountError');
+      const brokerError = document.getElementById('followBrokerError');
 
       let valid = true;
       const emailOk = /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email.value.trim());
       if (!emailOk) { emailError.classList.remove('hidden'); valid = false; } else { emailError.classList.add('hidden'); }
 
-      const passOk = password.value.length >= 6;
-      if (!passOk) { passwordError.classList.remove('hidden'); valid = false; } else { passwordError.classList.add('hidden'); }
+      if (!account.value.trim()) { accountError.classList.remove('hidden'); valid = false; } else { accountError.classList.add('hidden'); }
+      if (!broker.value.trim()) { brokerError.classList.remove('hidden'); valid = false; } else { brokerError.classList.add('hidden'); }
 
       if (!valid) return;
 
-      // TIDAK ADA pengiriman kredensial ke server manapun di sini,
-      // dan TIDAK disimpan ke localStorage/sessionStorage/cookie.
-      loginResultMsg.textContent = 'Fitur login akan tersedia setelah backend auth siap.';
-      loginResultMsg.classList.remove('hidden');
+      if (!GAS_WEB_APP_URL) {
+        setFollowResult('Konfigurasi GAS_WEB_APP_URL belum diisi, pendaftaran tidak bisa diproses.', true);
+        return;
+      }
+      setFollowResult(null);
+      followSubmitBtn.disabled = true;
+      followSubmitBtn.textContent = 'Mendaftarkan...';
+
+      // PENTING (CLAUDE.md §5.1): Content-Type text/plain, bukan
+      // application/json, supaya tidak memicu CORS preflight.
+      fetch(GAS_WEB_APP_URL, {
+        method: 'POST',
+        headers: { 'Content-Type': 'text/plain' },
+        body: JSON.stringify({
+          type: 'register_follower',
+          email: email.value.trim(),
+          account_number: account.value.trim(),
+          broker_server: broker.value.trim(),
+          platform: platform.value
+        })
+      })
+        .then(function (res) { return res.json(); })
+        .then(function (result) {
+          if (!result || result.success !== true) {
+            throw new Error((result && result.error) || 'Gagal mendaftar.');
+          }
+          if (result.email_sent) {
+            setFollowResult('Pendaftaran berhasil! Cek email Anda untuk token EA + file EA + link Telegram. Akun Anda menunggu approval admin sebelum mulai aktif.', false);
+          } else {
+            // Pendaftaran TETAP tersimpan di server meski email gagal --
+            // jujurkan ke user supaya mereka tahu harus hubungi admin,
+            // bukan cuma tampilkan sukses generik (pelajaran dari bug
+            // handleContactMessage_ sebelumnya).
+            setFollowResult('Pendaftaran tersimpan, TAPI email berisi token gagal terkirim (' +
+              (result.email_error || 'sebab tidak diketahui') + '). Hubungi admin untuk dapatkan token Anda.', true);
+          }
+          followForm.reset();
+        })
+        .catch(function (err) {
+          setFollowResult(err.message || 'Gagal mendaftar, coba lagi.', true);
+        })
+        .finally(function () {
+          followSubmitBtn.disabled = false;
+          followSubmitBtn.textContent = 'Daftar Sekarang';
+        });
     });
 
     // =====================================================================
