@@ -187,6 +187,19 @@
         </div>
       </section>
 
+      <!-- ===============================================================
+           1b. STATUS KONEKSI EA (Master & Follower)
+           Data dari LastSeen sheet (backend-gas/Database.gs
+           getAdminConnectionStatuses()) -- token asli TIDAK PERNAH dikirim
+           ke sini, backend sudah ganti jadi label "EA Master"/email follower.
+      =============================================================== -->
+      <section class="mb-6 rounded-xl border border-slate-800 bg-slate-900/60 p-4">
+        <h2 class="mb-3 text-sm font-semibold uppercase tracking-wide text-slate-400">Status Koneksi EA</h2>
+        <div id="connectionsGrid" class="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
+          <p id="connectionsEmpty" class="text-sm text-slate-500">Belum ada EA yang pernah terhubung ke backend.</p>
+        </div>
+      </section>
+
       <div class="mb-6 grid grid-cols-1 gap-6 lg:grid-cols-2">
 
         <!-- =============================================================
@@ -394,7 +407,8 @@
       </div>
 
       <dl class="mb-4 grid grid-cols-1 gap-x-4 gap-y-2 rounded-lg border border-slate-800 bg-slate-950/60 p-3 text-sm sm:grid-cols-2">
-        <div><dt class="text-xs text-slate-500">Status</dt><dd id="fdStatus" class="font-semibold text-white">-</dd></div>
+        <div><dt class="text-xs text-slate-500">Status Akun</dt><dd id="fdStatus" class="font-semibold text-white">-</dd></div>
+        <div><dt class="text-xs text-slate-500">Status Koneksi EA</dt><dd id="fdConnection" class="font-semibold text-slate-400">Belum pernah konek</dd></div>
         <div><dt class="text-xs text-slate-500">ID</dt><dd id="fdId" class="break-all font-mono text-[11px] text-slate-400">-</dd></div>
         <div><dt class="text-xs text-slate-500">Dibuat</dt><dd id="fdCreatedAt" class="text-slate-300">-</dd></div>
         <div><dt class="text-xs text-slate-500">Diupdate</dt><dd id="fdUpdatedAt" class="text-slate-300">-</dd></div>
@@ -446,6 +460,10 @@
             class="rounded-lg border border-slate-700 px-3 py-2 text-sm font-medium text-slate-200 transition hover:border-accent hover:text-accent disabled:cursor-not-allowed disabled:opacity-60">
             Switch On/Off
           </button>
+          <button type="button" id="btnResendFollowerEmail"
+            class="rounded-lg border border-slate-700 px-3 py-2 text-sm font-medium text-slate-200 transition hover:border-accent hover:text-accent disabled:cursor-not-allowed disabled:opacity-60">
+            Kirim Ulang Email
+          </button>
           <button type="button" id="btnDeleteFollower"
             class="ml-auto rounded-lg border border-red-500/40 px-3 py-2 text-sm font-medium text-red-300 transition hover:bg-red-500/10 disabled:cursor-not-allowed disabled:opacity-60">
             Hapus
@@ -470,6 +488,7 @@
       token: '',
       config: null,
       followers: [],
+      connections: [],
       currentFollowerId: null
     };
 
@@ -527,8 +546,12 @@
 
       followersTableBody: document.getElementById('followersTableBody'),
 
+      connectionsGrid: document.getElementById('connectionsGrid'),
+      connectionsEmpty: document.getElementById('connectionsEmpty'),
+
       followerModal: document.getElementById('followerModal'),
       fdStatus: document.getElementById('fdStatus'),
+      fdConnection: document.getElementById('fdConnection'),
       fdId: document.getElementById('fdId'),
       fdCreatedAt: document.getElementById('fdCreatedAt'),
       fdUpdatedAt: document.getElementById('fdUpdatedAt'),
@@ -541,6 +564,7 @@
       editFollowerToken: document.getElementById('editFollowerToken'),
       editFollowerTokenToggle: document.getElementById('editFollowerTokenToggle'),
       btnToggleFollowerStatus: document.getElementById('btnToggleFollowerStatus'),
+      btnResendFollowerEmail: document.getElementById('btnResendFollowerEmail'),
       btnDeleteFollower: document.getElementById('btnDeleteFollower'),
 
       toastContainer: document.getElementById('toastContainer')
@@ -689,6 +713,7 @@
 
           state.config = data.config || null;
           state.followers = data.followers || [];
+          state.connections = data.connections || [];
 
           el.gateScreen.classList.add('hidden');
           el.dashboardScreen.classList.remove('hidden');
@@ -762,6 +787,7 @@
           }
           state.config = data.config || null;
           state.followers = data.followers || [];
+          state.connections = data.connections || [];
           renderAll();
           if (!silent) showToast('Data admin berhasil diperbarui.', 'success');
           return true;
@@ -784,11 +810,64 @@
     // =====================================================================
     function renderAll() {
       renderAiStatus();
+      renderConnections();
       renderAiConfigForm();
       renderGasUrlForm();
       renderPairs();
       renderTelegramForm();
       renderFollowersTable();
+    }
+
+    /**
+     * Render kartu status koneksi EA Master & tiap Follower yang PERNAH
+     * terhubung (dari LastSeen sheet via getAdminConnectionStatuses() --
+     * token asli tidak pernah dikirim ke sini, cuma label). "Online" berarti
+     * request terakhir masih dalam batas waktu deteksi Bot Off (lihat
+     * CLAUDE.md §1.6), bukan berarti EA sedang trading aktif saat ini juga.
+     */
+    function renderConnections() {
+      var list = state.connections || [];
+      el.connectionsGrid.innerHTML = '';
+      if (list.length === 0) {
+        el.connectionsGrid.appendChild(el.connectionsEmpty);
+        return;
+      }
+      // EA Master ditampilkan duluan, sisanya (follower) urut apa adanya.
+      var sorted = list.slice().sort(function (a, b) { return (b.is_master ? 1 : 0) - (a.is_master ? 1 : 0); });
+      sorted.forEach(function (c) {
+        var card = document.createElement('div');
+        card.className = 'flex items-center justify-between rounded-xl border border-slate-800 bg-slate-900/60 p-4';
+        var dotColor = c.online ? 'bg-emerald-400' : 'bg-red-500';
+        var statusText = c.online ? 'Online' : 'Offline';
+        var statusColor = c.online ? 'text-emerald-400' : 'text-red-400';
+        var badge = c.is_master
+          ? '<span class="rounded-full bg-accent/15 px-1.5 py-0.5 text-[10px] font-semibold text-accent">MASTER</span>'
+          : '<span class="rounded-full bg-slate-700/50 px-1.5 py-0.5 text-[10px] font-semibold text-slate-300">FOLLOWER</span>';
+        card.innerHTML =
+          '<div class="min-w-0">' +
+            '<div class="flex items-center gap-1.5">' +
+              '<p class="truncate text-sm font-semibold text-white">' + escapeHtml(c.label || '-') + '</p>' +
+              badge +
+            '</div>' +
+            '<p class="text-xs text-slate-500">Pair: ' + escapeHtml(c.pair || '-') + ' &middot; Terakhir: ' + escapeHtml(fmtDateTime(c.last_seen)) + '</p>' +
+          '</div>' +
+          '<div class="flex shrink-0 items-center gap-2 pl-2">' +
+            '<span class="' + statusColor + ' text-xs font-semibold">' + statusText + '</span>' +
+            '<span class="h-2.5 w-2.5 rounded-full ' + dotColor + (c.online ? ' pulse-dot' : '') + '"></span>' +
+          '</div>';
+        el.connectionsGrid.appendChild(card);
+      });
+    }
+
+    /** Cari status koneksi milik satu follower (dicocokkan by email, fallback account_number -- sama seperti label yang dibuat backend). */
+    function findConnectionForFollower(follower) {
+      var list = state.connections || [];
+      for (var i = 0; i < list.length; i++) {
+        if (!list[i].is_master && list[i].label === (follower.email || follower.account_number)) {
+          return list[i];
+        }
+      }
+      return null;
     }
 
     function renderAiStatus() {
@@ -1012,7 +1091,17 @@
         .then(function (data) {
           if (!data || data.success !== true) throw new Error((data && data.error) || 'Gagal menambah follower.');
           el.addFollowerForm.reset();
-          showToast('Follower baru berhasil ditambahkan.', 'success');
+          // save_follower SELALU menyimpan followernya (baris di atas sudah
+          // memastikan itu), tapi email onboarding (token+file EA_Follower.ex5)
+          // bisa gagal terpisah -- laporkan jujur, jangan asumsikan satu
+          // toast sukses berarti keduanya berhasil (pelajaran dari bug
+          // handleContactMessage_ sebelumnya).
+          if (data.email_sent) {
+            showToast('Follower ditambahkan & email onboarding (token+EA) berhasil terkirim.', 'success');
+          } else {
+            showToast('Follower ditambahkan, TAPI email onboarding gagal terkirim: ' +
+              (data.email_error || 'sebab tidak diketahui') + '. Klik Detail follower ini untuk kirim ulang.', 'error');
+          }
           refreshAll(true); // fire-and-forget, sinkronkan tabel follower
         })
         .catch(function (err) { showToast(err.message || 'Gagal menambah follower.', 'error'); })
@@ -1033,6 +1122,16 @@
 
       el.fdStatus.textContent = f.status || '-';
       el.fdStatus.className = f.status === 'active' ? 'font-semibold text-emerald-400' : 'font-semibold text-slate-400';
+
+      var conn = findConnectionForFollower(f);
+      if (!conn) {
+        el.fdConnection.textContent = 'Belum pernah konek';
+        el.fdConnection.className = 'font-semibold text-slate-400';
+      } else {
+        el.fdConnection.textContent = (conn.online ? 'Online' : 'Offline') + ' (terakhir: ' + fmtDateTime(conn.last_seen) + ')';
+        el.fdConnection.className = conn.online ? 'font-semibold text-emerald-400' : 'font-semibold text-red-400';
+      }
+
       el.fdId.textContent = f.id || '-';
       el.fdCreatedAt.textContent = fmtDateTime(f.created_at);
       el.fdUpdatedAt.textContent = fmtDateTime(f.updated_at);
@@ -1113,6 +1212,28 @@
           btn.textContent = originalLabel;
         })
         .finally(function () { btn.disabled = false; });
+    });
+
+    el.btnResendFollowerEmail.addEventListener('click', function () {
+      var id = el.editFollowerId.value;
+      var f = findFollower(id);
+      if (!f) return;
+      setButtonBusy(el.btnResendFollowerEmail, true, 'Mengirim...', 'Kirim Ulang Email');
+      adminPost('resend_follower_email', { id: id })
+        .then(function (data) {
+          if (!data || data.success !== true) throw new Error((data && data.error) || 'Gagal mengirim ulang email.');
+          if (data.email_sent) {
+            showToast('Email berhasil dikirim ulang ke ' + (f.email || 'follower ini') + '.', 'success');
+          } else {
+            // PENTING: backend bisa balas success:true tapi email_sent:false
+            // tidak pernah terjadi di jalur ini (handleResendFollowerEmail_
+            // selalu jsonSuccess apa pun hasil emailnya) -- jadi cek eksplisit
+            // di sini, jangan asumsikan success:true berarti email terkirim.
+            showToast('Email GAGAL terkirim: ' + (data.email_error || 'sebab tidak diketahui') + '. Cek EA_FOLLOWER_DOWNLOAD_URL di Script Properties.', 'error');
+          }
+        })
+        .catch(function (err) { showToast(err.message || 'Gagal mengirim ulang email.', 'error'); })
+        .finally(function () { setButtonBusy(el.btnResendFollowerEmail, false, 'Mengirim...', 'Kirim Ulang Email'); });
     });
 
     el.btnDeleteFollower.addEventListener('click', function () {
