@@ -1,0 +1,789 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>AI Forex Bot Dashboard</title>
+<meta name="description" content="Dashboard publik status &amp; performa AI Forex Trading Bot Orchestrator.">
+
+<!-- Tailwind CSS via CDN (sesuai REDME.md: tanpa build step, tanpa framework rumit) -->
+<script src="https://cdn.tailwindcss.com"></script>
+<script>
+  // Konfigurasi tema Tailwind minimal (tetap pakai utility class bawaan,
+  // cuma menambah 1 warna aksen kustom biar konsisten di seluruh halaman).
+  tailwind.config = {
+    theme: {
+      extend: {
+        colors: {
+          accent: {
+            DEFAULT: '#22d3ee', // cyan-400, dipakai untuk highlight/brand
+            dark: '#0891b2'
+          }
+        }
+      }
+    }
+  };
+</script>
+
+<style>
+  /* Sedikit polesan yang tidak praktis lewat utility class Tailwind saja. */
+  html, body {
+    background-color: #0b1120;
+    overflow-x: hidden; /* body TIDAK BOLEH scroll horizontal, cuma tabel yang boleh */
+  }
+  ::-webkit-scrollbar { height: 8px; width: 8px; }
+  ::-webkit-scrollbar-thumb { background: #334155; border-radius: 9999px; }
+  ::-webkit-scrollbar-track { background: transparent; }
+
+  /* Modal: disembunyikan lewat class hidden bawaan Tailwind, dipakai untuk toggle */
+  .modal-backdrop { background: rgba(2, 6, 23, 0.75); }
+
+  /* Animasi kecil untuk badge status online (pulse titik hijau) */
+  @keyframes pulse-dot {
+    0%, 100% { opacity: 1; }
+    50% { opacity: 0.35; }
+  }
+  .pulse-dot { animation: pulse-dot 1.6s ease-in-out infinite; }
+</style>
+</head>
+
+<body class="min-h-screen bg-slate-950 text-slate-200 font-sans antialiased">
+
+  <!-- =====================================================================
+       HEADER
+  ===================================================================== -->
+  <header class="sticky top-0 z-30 border-b border-slate-800 bg-slate-950/90 backdrop-blur">
+    <div class="mx-auto flex max-w-6xl items-center justify-between gap-3 px-4 py-3 sm:px-6">
+      <div class="flex items-center gap-2">
+        <div class="flex h-9 w-9 items-center justify-center rounded-lg bg-accent/10 text-accent">
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" class="h-5 w-5">
+            <path stroke-linecap="round" stroke-linejoin="round" d="M3 17l6-6 4 4 8-8M21 7v6h-6" />
+          </svg>
+        </div>
+        <div class="leading-tight">
+          <p class="text-sm font-bold text-white">AI Forex Bot</p>
+          <p class="text-[11px] text-slate-400">Orchestrator Dashboard</p>
+        </div>
+      </div>
+
+      <div class="flex items-center gap-2">
+        <span id="lastUpdatedBadge" class="hidden text-xs text-slate-500 sm:inline">Update terakhir: -</span>
+        <button id="btnContact" type="button"
+          class="rounded-lg border border-slate-700 px-3 py-1.5 text-sm font-medium text-slate-200 transition hover:border-accent hover:text-accent">
+          Kontak
+        </button>
+        <button id="btnLogin" type="button"
+          class="rounded-lg bg-accent px-3 py-1.5 text-sm font-semibold text-slate-950 transition hover:bg-accent-dark">
+          Login
+        </button>
+      </div>
+    </div>
+  </header>
+
+  <main class="mx-auto max-w-6xl px-4 py-6 sm:px-6">
+
+    <!-- ===================================================================
+         BANNER: GAS_WEB_APP_URL belum diisi (config error, bukan silent fail)
+    =================================================================== -->
+    <div id="configWarning" class="hidden mb-6 rounded-xl border border-amber-500/40 bg-amber-500/10 p-4 text-amber-300">
+      <p class="font-semibold">⚠️ Konfigurasi belum lengkap</p>
+      <p class="mt-1 text-sm text-amber-200/90">
+        Konstanta <code class="rounded bg-black/30 px-1 py-0.5">GAS_WEB_APP_URL</code> di bagian atas
+        <code class="rounded bg-black/30 px-1 py-0.5">&lt;script&gt;</code> file ini masih kosong.
+        Dashboard tidak bisa mengambil data sampai owner mengisi URL Web App Google Apps Script
+        (hasil deploy backend) di sana. Lihat <code class="rounded bg-black/30 px-1 py-0.5">frontend/README.md</code>.
+      </p>
+    </div>
+
+    <!-- ===================================================================
+         BANNER: error saat fetch (network / response gagal)
+    =================================================================== -->
+    <div id="fetchError" class="hidden mb-6 rounded-xl border border-red-500/40 bg-red-500/10 p-4 text-red-300">
+      <p class="font-semibold">Gagal memuat data dashboard</p>
+      <p id="fetchErrorMsg" class="mt-1 text-sm text-red-200/90">-</p>
+      <p class="mt-1 text-xs text-red-300/70">Sistem akan mencoba lagi secara otomatis.</p>
+    </div>
+
+    <!-- ===================================================================
+         LOADING STATE (ditampilkan saat load pertama kali)
+    =================================================================== -->
+    <div id="loadingState" class="mb-6 flex items-center gap-3 rounded-xl border border-slate-800 bg-slate-900/50 p-4 text-slate-400">
+      <svg class="h-5 w-5 animate-spin text-accent" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+        <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+        <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"></path>
+      </svg>
+      <span>Memuat data dashboard...</span>
+    </div>
+
+    <!-- ===================================================================
+         STATUS BOT PER PAIR
+    =================================================================== -->
+    <section class="mb-6">
+      <h2 class="mb-3 text-sm font-semibold uppercase tracking-wide text-slate-400">Status Bot</h2>
+      <div id="botStatusGrid" class="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
+        <p id="botStatusEmpty" class="text-sm text-slate-500">Belum ada data bot.</p>
+      </div>
+    </section>
+
+    <!-- ===================================================================
+         STAT CARDS (win rate, profit, total trade, drawdown, profit factor, avg trade)
+    =================================================================== -->
+    <section class="mb-6 grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-6">
+      <div class="rounded-xl border border-slate-800 bg-slate-900/60 p-4">
+        <p class="text-xs text-slate-400">Win Rate</p>
+        <p id="statWinRate" class="mt-1 text-xl font-bold text-white">-</p>
+      </div>
+      <div class="rounded-xl border border-slate-800 bg-slate-900/60 p-4">
+        <p class="text-xs text-slate-400">Total Trade</p>
+        <p id="statTotalTrade" class="mt-1 text-xl font-bold text-white">-</p>
+      </div>
+      <div class="rounded-xl border border-slate-800 bg-slate-900/60 p-4">
+        <p class="text-xs text-slate-400">Profit (pips)</p>
+        <p id="statProfitPips" class="mt-1 text-xl font-bold text-white">-</p>
+      </div>
+      <div class="rounded-xl border border-slate-800 bg-slate-900/60 p-4">
+        <p class="text-xs text-slate-400">Profit (USD)</p>
+        <p id="statProfitUsd" class="mt-1 text-xl font-bold text-white">-</p>
+      </div>
+      <div class="rounded-xl border border-slate-800 bg-slate-900/60 p-4">
+        <p class="text-xs text-slate-400">Profit Factor</p>
+        <p id="statProfitFactor" class="mt-1 text-xl font-bold text-white">-</p>
+      </div>
+      <div class="rounded-xl border border-slate-800 bg-slate-900/60 p-4">
+        <p class="text-xs text-slate-400">Max Drawdown</p>
+        <p id="statDrawdown" class="mt-1 text-xl font-bold text-white">-</p>
+      </div>
+    </section>
+    <section class="mb-6">
+      <div class="rounded-xl border border-slate-800 bg-slate-900/60 p-4 sm:max-w-xs">
+        <p class="text-xs text-slate-400">Average Trade (USD)</p>
+        <p id="statAvgTrade" class="mt-1 text-xl font-bold text-white">-</p>
+      </div>
+    </section>
+
+    <!-- ===================================================================
+         EQUITY CURVE (bonus, chart sederhana pakai Canvas API vanilla -
+         tidak menambah dependency chart library sesuai aturan project)
+    =================================================================== -->
+    <section class="mb-6">
+      <h2 class="mb-3 text-sm font-semibold uppercase tracking-wide text-slate-400">Equity Curve (Akumulasi Profit USD)</h2>
+      <div class="rounded-xl border border-slate-800 bg-slate-900/60 p-4">
+        <canvas id="equityCanvas" class="w-full" height="160"></canvas>
+        <p id="equityEmpty" class="hidden text-sm text-slate-500">Belum ada data histori untuk digambar.</p>
+      </div>
+    </section>
+
+    <!-- ===================================================================
+         SINYAL AKTIF (tambahan, dari active_signals[])
+    =================================================================== -->
+    <section class="mb-6">
+      <h2 class="mb-3 text-sm font-semibold uppercase tracking-wide text-slate-400">Sinyal Aktif</h2>
+      <div id="activeSignalsWrap" class="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
+        <p id="activeSignalsEmpty" class="text-sm text-slate-500">Tidak ada sinyal aktif saat ini.</p>
+      </div>
+    </section>
+
+    <!-- ===================================================================
+         TABEL RIWAYAT TRADING AI
+    =================================================================== -->
+    <section class="mb-10">
+      <h2 class="mb-3 text-sm font-semibold uppercase tracking-wide text-slate-400">Riwayat Trading AI</h2>
+      <div class="rounded-xl border border-slate-800 bg-slate-900/60">
+        <!-- overflow-x-auto DI SINI SAJA supaya body tidak ikut scroll horizontal -->
+        <div class="overflow-x-auto">
+          <table class="w-full min-w-[820px] text-left text-sm">
+            <thead class="border-b border-slate-800 text-xs uppercase tracking-wide text-slate-400">
+              <tr>
+                <th class="px-4 py-3">Waktu</th>
+                <th class="px-4 py-3">Pair</th>
+                <th class="px-4 py-3">Arah</th>
+                <th class="px-4 py-3">Entry</th>
+                <th class="px-4 py-3">Exit</th>
+                <th class="px-4 py-3">Lot</th>
+                <th class="px-4 py-3 text-right">Profit (pips)</th>
+                <th class="px-4 py-3 text-right">Profit (USD)</th>
+              </tr>
+            </thead>
+            <tbody id="historyTableBody" class="divide-y divide-slate-800">
+              <tr>
+                <td colspan="8" class="px-4 py-6 text-center text-slate-500">Belum ada data histori.</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </section>
+
+    <footer class="border-t border-slate-800 py-6 text-center text-xs text-slate-500">
+      AI Forex Trading Bot Orchestrator — dashboard publik, read-only. Tidak ada API key yang disimpan di halaman ini.
+    </footer>
+  </main>
+
+  <!-- =====================================================================
+       MODAL LOGIN
+       CATATAN PENTING: Ini PLACEHOLDER UI SAJA. Backend auth belum ada di
+       Fase 1/2 (lihat CLAUDE.md §6, rencana fase). Form ini sengaja TIDAK:
+         - memvalidasi kredensial ke server manapun,
+         - berpura-pura login berhasil,
+         - menyimpan email/password ke localStorage/sessionStorage/cookie,
+         - mengirim kredensial ke endpoint apapun.
+       Submit hanya menampilkan pesan informasi ke user. Ganti fungsi
+       handleLoginSubmit() ini nanti kalau backend auth sudah siap.
+  ===================================================================== -->
+  <div id="loginModal" class="fixed inset-0 z-50 hidden items-center justify-center p-4">
+    <div class="modal-backdrop absolute inset-0" data-close-modal="loginModal"></div>
+    <div class="relative w-full max-w-sm rounded-2xl border border-slate-800 bg-slate-900 p-5 shadow-xl">
+      <div class="mb-4 flex items-center justify-between">
+        <h3 class="text-lg font-semibold text-white">Login</h3>
+        <button type="button" class="text-slate-400 hover:text-white" data-close-modal="loginModal" aria-label="Tutup">✕</button>
+      </div>
+
+      <p class="mb-4 rounded-lg border border-slate-700 bg-slate-800/60 p-2 text-xs text-slate-400">
+        Fitur login masih placeholder UI — backend autentikasi belum tersedia.
+      </p>
+
+      <form id="loginForm" class="space-y-3" novalidate>
+        <div>
+          <label for="loginEmail" class="mb-1 block text-xs font-medium text-slate-300">Email</label>
+          <input id="loginEmail" type="email" required
+            class="w-full rounded-lg border border-slate-700 bg-slate-950 px-3 py-2 text-sm text-white outline-none focus:border-accent"
+            placeholder="nama@email.com">
+          <p id="loginEmailError" class="mt-1 hidden text-xs text-red-400">Email tidak valid.</p>
+        </div>
+        <div>
+          <label for="loginPassword" class="mb-1 block text-xs font-medium text-slate-300">Password</label>
+          <input id="loginPassword" type="password" required minlength="6"
+            class="w-full rounded-lg border border-slate-700 bg-slate-950 px-3 py-2 text-sm text-white outline-none focus:border-accent"
+            placeholder="Minimal 6 karakter">
+          <p id="loginPasswordError" class="mt-1 hidden text-xs text-red-400">Password minimal 6 karakter.</p>
+        </div>
+
+        <div id="loginResultMsg" class="hidden rounded-lg border border-accent/30 bg-accent/10 p-2 text-xs text-accent"></div>
+
+        <button type="submit"
+          class="w-full rounded-lg bg-accent px-3 py-2 text-sm font-semibold text-slate-950 transition hover:bg-accent-dark">
+          Masuk
+        </button>
+      </form>
+    </div>
+  </div>
+
+  <!-- =====================================================================
+       MODAL KONTAK
+       Submit form ini fetch() POST ke backend GAS (type: "contact"), yang
+       menyimpan pesan ke sheet Contacts DAN mengirim email asli lewat
+       MailApp.sendEmail() ke CONTACT_EMAIL (lihat Webhook.gs
+       handleContactMessage_) -- bukan lagi mailto: client-side, supaya
+       pesan benar-benar terkirim otomatis tanpa bergantung ke aplikasi
+       email pengunjung.
+  ===================================================================== -->
+  <div id="contactModal" class="fixed inset-0 z-50 hidden items-center justify-center p-4">
+    <div class="modal-backdrop absolute inset-0" data-close-modal="contactModal"></div>
+    <div class="relative w-full max-w-sm rounded-2xl border border-slate-800 bg-slate-900 p-5 shadow-xl">
+      <div class="mb-4 flex items-center justify-between">
+        <h3 class="text-lg font-semibold text-white">Kontak</h3>
+        <button type="button" class="text-slate-400 hover:text-white" data-close-modal="contactModal" aria-label="Tutup">✕</button>
+      </div>
+
+      <p class="mb-4 rounded-lg border border-slate-700 bg-slate-800/60 p-2 text-xs text-slate-400">
+        Pesan akan dikirim langsung ke email admin lewat server, tidak perlu aplikasi email kamu sendiri.
+      </p>
+
+      <div id="contactResultMsg" class="mb-3 hidden rounded-lg border p-2 text-xs"></div>
+
+      <form id="contactForm" class="space-y-3" novalidate>
+        <div>
+          <label for="contactName" class="mb-1 block text-xs font-medium text-slate-300">Nama</label>
+          <input id="contactName" type="text" required
+            class="w-full rounded-lg border border-slate-700 bg-slate-950 px-3 py-2 text-sm text-white outline-none focus:border-accent"
+            placeholder="Nama kamu">
+          <p id="contactNameError" class="mt-1 hidden text-xs text-red-400">Nama wajib diisi.</p>
+        </div>
+        <div>
+          <label for="contactEmail" class="mb-1 block text-xs font-medium text-slate-300">Email</label>
+          <input id="contactEmail" type="email" required
+            class="w-full rounded-lg border border-slate-700 bg-slate-950 px-3 py-2 text-sm text-white outline-none focus:border-accent"
+            placeholder="nama@email.com">
+          <p id="contactEmailError" class="mt-1 hidden text-xs text-red-400">Email tidak valid.</p>
+        </div>
+        <div>
+          <label for="contactMessage" class="mb-1 block text-xs font-medium text-slate-300">Pesan</label>
+          <textarea id="contactMessage" required rows="3"
+            class="w-full rounded-lg border border-slate-700 bg-slate-950 px-3 py-2 text-sm text-white outline-none focus:border-accent"
+            placeholder="Tulis pesan kamu..."></textarea>
+          <p id="contactMessageError" class="mt-1 hidden text-xs text-red-400">Pesan wajib diisi.</p>
+        </div>
+
+        <button type="submit" id="contactSubmitBtn"
+          class="w-full rounded-lg bg-accent px-3 py-2 text-sm font-semibold text-slate-950 transition hover:bg-accent-dark disabled:cursor-not-allowed disabled:opacity-60">
+          Kirim Pesan
+        </button>
+      </form>
+    </div>
+  </div>
+
+  <script>
+  (function () {
+    'use strict';
+
+    // =====================================================================
+    // KONFIGURASI — SATU-SATUNYA HAL YANG WAJIB DIISI MANUAL OWNER
+    // =====================================================================
+    // Isi dengan URL hasil deploy Web App Google Apps Script, contoh:
+    //   const GAS_WEB_APP_URL = 'https://script.google.com/macros/s/AKfycb.../exec';
+    // Ini BUKAN secret/API key — endpoint ini memang didesain publik untuk
+    // dibaca via GET (?action=get_dashboard) tanpa autentikasi (lihat
+    // Webhook.gs `handleGetDashboard_`). Jangan taruh API key AI/Telegram
+    // apa pun di file ini.
+    const GAS_WEB_APP_URL = ''; // <-- ISI DI SINI setelah backend GAS dideploy
+
+    const FETCH_INTERVAL_MS = 45000; // polling tiap 45 detik
+    const DASHBOARD_ACTION = 'get_dashboard';
+
+    // =====================================================================
+    // Elemen DOM
+    // =====================================================================
+    const el = {
+      configWarning: document.getElementById('configWarning'),
+      fetchError: document.getElementById('fetchError'),
+      fetchErrorMsg: document.getElementById('fetchErrorMsg'),
+      loadingState: document.getElementById('loadingState'),
+      lastUpdatedBadge: document.getElementById('lastUpdatedBadge'),
+
+      botStatusGrid: document.getElementById('botStatusGrid'),
+      botStatusEmpty: document.getElementById('botStatusEmpty'),
+
+      statWinRate: document.getElementById('statWinRate'),
+      statTotalTrade: document.getElementById('statTotalTrade'),
+      statProfitPips: document.getElementById('statProfitPips'),
+      statProfitUsd: document.getElementById('statProfitUsd'),
+      statProfitFactor: document.getElementById('statProfitFactor'),
+      statDrawdown: document.getElementById('statDrawdown'),
+      statAvgTrade: document.getElementById('statAvgTrade'),
+
+      equityCanvas: document.getElementById('equityCanvas'),
+      equityEmpty: document.getElementById('equityEmpty'),
+
+      activeSignalsWrap: document.getElementById('activeSignalsWrap'),
+      activeSignalsEmpty: document.getElementById('activeSignalsEmpty'),
+
+      historyTableBody: document.getElementById('historyTableBody'),
+    };
+
+    // =====================================================================
+    // Helpers format
+    // =====================================================================
+    function fmtNumber(v, digits) {
+      if (v === null || v === undefined || v === '' || isNaN(Number(v))) return '-';
+      return Number(v).toLocaleString('id-ID', {
+        minimumFractionDigits: digits != null ? digits : 0,
+        maximumFractionDigits: digits != null ? digits : 2
+      });
+    }
+
+    function fmtUsd(v) {
+      if (v === null || v === undefined || v === '' || isNaN(Number(v))) return '-';
+      const sign = Number(v) > 0 ? '+' : '';
+      return sign + '$' + fmtNumber(v, 2);
+    }
+
+    function fmtDateTime(iso) {
+      if (!iso) return '-';
+      const d = new Date(iso);
+      if (isNaN(d.getTime())) return String(iso);
+      return d.toLocaleString('id-ID', {
+        day: '2-digit', month: 'short', year: 'numeric',
+        hour: '2-digit', minute: '2-digit'
+      });
+    }
+
+    function profitClass(v) {
+      const n = Number(v);
+      if (isNaN(n) || n === 0) return 'text-slate-300';
+      return n > 0 ? 'text-emerald-400' : 'text-red-400';
+    }
+
+    // =====================================================================
+    // Render: Status bot
+    // =====================================================================
+    function renderBotStatuses(botStatuses) {
+      el.botStatusGrid.innerHTML = '';
+      if (!botStatuses || botStatuses.length === 0) {
+        el.botStatusGrid.appendChild(el.botStatusEmpty);
+        return;
+      }
+      botStatuses.forEach(function (b) {
+        const card = document.createElement('div');
+        card.className = 'flex items-center justify-between rounded-xl border border-slate-800 bg-slate-900/60 p-4';
+        const dotColor = b.online ? 'bg-emerald-400' : 'bg-red-500';
+        const statusText = b.online ? 'Online' : 'Offline';
+        const statusColor = b.online ? 'text-emerald-400' : 'text-red-400';
+        card.innerHTML =
+          '<div>' +
+            '<p class="text-sm font-semibold text-white">' + escapeHtml(b.pair || '-') + '</p>' +
+            '<p class="text-xs text-slate-500">Terakhir aktif: ' + escapeHtml(fmtDateTime(b.last_seen)) + '</p>' +
+          '</div>' +
+          '<div class="flex items-center gap-2">' +
+            '<span class="' + statusColor + ' text-xs font-semibold">' + statusText + '</span>' +
+            '<span class="h-2.5 w-2.5 rounded-full ' + dotColor + (b.online ? ' pulse-dot' : '') + '"></span>' +
+          '</div>';
+        el.botStatusGrid.appendChild(card);
+      });
+    }
+
+    // =====================================================================
+    // Render: Stats
+    // =====================================================================
+    function renderStats(stats) {
+      if (!stats) return;
+      el.statWinRate.textContent = (stats.win_rate === null || stats.win_rate === undefined) ? '-' : fmtNumber(stats.win_rate, 2) + '%';
+      el.statTotalTrade.textContent = fmtNumber(stats.total_trade, 0);
+      el.statProfitPips.textContent = fmtNumber(stats.total_profit_pips, 1);
+      el.statProfitPips.className = 'mt-1 text-xl font-bold ' + profitClass(stats.total_profit_pips).replace('text-slate-300', 'text-white');
+      el.statProfitUsd.textContent = fmtUsd(stats.total_profit_usd);
+      el.statProfitUsd.className = 'mt-1 text-xl font-bold ' + profitClass(stats.total_profit_usd).replace('text-slate-300', 'text-white');
+      el.statAvgTrade.textContent = fmtUsd(stats.average_trade_usd);
+      el.statDrawdown.textContent = '-$' + fmtNumber(Math.abs(Number(stats.max_drawdown_usd) || 0), 2);
+
+      // profit_factor: edge case backend -> Infinity di GAS di-serialize JSON
+      // jadi `null` (JSON tidak kenal Infinity), artinya "belum pernah loss".
+      // 0 total_trade -> tampilkan "-" (belum ada data), bukan "∞".
+      if (!stats.total_trade || stats.total_trade === 0) {
+        el.statProfitFactor.textContent = '-';
+      } else if (stats.profit_factor === null || stats.profit_factor === undefined) {
+        el.statProfitFactor.textContent = '∞';
+      } else {
+        el.statProfitFactor.textContent = fmtNumber(stats.profit_factor, 2);
+      }
+    }
+
+    // =====================================================================
+    // Render: Equity curve (Canvas API vanilla, tanpa library chart)
+    // =====================================================================
+    function renderEquityCurve(historyRows) {
+      const canvas = el.equityCanvas;
+      const ctx = canvas.getContext('2d');
+      // set resolusi internal sesuai lebar tampil (biar tidak blur di layar retina)
+      const dpr = window.devicePixelRatio || 1;
+      const displayWidth = canvas.clientWidth || canvas.parentElement.clientWidth || 300;
+      const displayHeight = 160;
+      canvas.width = displayWidth * dpr;
+      canvas.height = displayHeight * dpr;
+      canvas.style.height = displayHeight + 'px';
+      ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+      ctx.clearRect(0, 0, displayWidth, displayHeight);
+
+      if (!historyRows || historyRows.length === 0) {
+        el.equityEmpty.classList.remove('hidden');
+        canvas.classList.add('hidden');
+        return;
+      }
+      el.equityEmpty.classList.add('hidden');
+      canvas.classList.remove('hidden');
+
+      // historyRows sudah terurut terbaru -> lama (dari backend), balik dulu
+      // supaya equity curve tergambar kronologis lama -> baru.
+      const chrono = historyRows.slice().reverse();
+      let cumulative = 0;
+      const points = chrono.map(function (row) {
+        cumulative += Number(row.profit_usd) || 0;
+        return cumulative;
+      });
+
+      const min = Math.min(0, Math.min.apply(null, points));
+      const max = Math.max(0, Math.max.apply(null, points));
+      const range = (max - min) || 1;
+      const padding = 10;
+      const w = displayWidth - padding * 2;
+      const h = displayHeight - padding * 2;
+
+      function xAt(i) { return padding + (points.length === 1 ? w : (i / (points.length - 1)) * w); }
+      function yAt(v) { return padding + h - ((v - min) / range) * h; }
+
+      // garis nol
+      ctx.strokeStyle = 'rgba(148,163,184,0.3)';
+      ctx.lineWidth = 1;
+      ctx.beginPath();
+      ctx.moveTo(padding, yAt(0));
+      ctx.lineTo(padding + w, yAt(0));
+      ctx.stroke();
+
+      // garis equity
+      ctx.strokeStyle = '#22d3ee';
+      ctx.lineWidth = 2;
+      ctx.beginPath();
+      points.forEach(function (v, i) {
+        const x = xAt(i), y = yAt(v);
+        if (i === 0) ctx.moveTo(x, y); else ctx.lineTo(x, y);
+      });
+      ctx.stroke();
+
+      // area fill tipis di bawah garis
+      ctx.lineTo(xAt(points.length - 1), yAt(0));
+      ctx.lineTo(xAt(0), yAt(0));
+      ctx.closePath();
+      ctx.fillStyle = 'rgba(34,211,238,0.08)';
+      ctx.fill();
+    }
+
+    // =====================================================================
+    // Render: Sinyal aktif
+    // =====================================================================
+    function renderActiveSignals(activeSignals) {
+      el.activeSignalsWrap.innerHTML = '';
+      if (!activeSignals || activeSignals.length === 0) {
+        el.activeSignalsWrap.appendChild(el.activeSignalsEmpty);
+        return;
+      }
+      activeSignals.forEach(function (item) {
+        const s = item.signal || {};
+        const dirColor = s.new_signal === 'BUY' ? 'text-emerald-400' : s.new_signal === 'SELL' ? 'text-red-400' : 'text-slate-300';
+        const card = document.createElement('div');
+        card.className = 'rounded-xl border border-slate-800 bg-slate-900/60 p-4 text-sm';
+        card.innerHTML =
+          '<div class="mb-1 flex items-center justify-between">' +
+            '<span class="font-semibold text-white">' + escapeHtml(item.pair || '-') + '</span>' +
+            '<span class="' + dirColor + ' font-bold">' + escapeHtml(s.new_signal || '-') + '</span>' +
+          '</div>' +
+          '<p class="text-xs text-slate-400">Entry: ' + escapeHtml(String(s.zona_entry_price || '-')) + '</p>' +
+          '<p class="text-xs text-slate-400">SL: ' + escapeHtml(String(s.sl != null ? s.sl : '-')) + ' &middot; TP: ' + escapeHtml(String(s.tp != null ? s.tp : '-')) + '</p>' +
+          '<p class="text-xs text-slate-500">Lot: ' + escapeHtml(String(s.lot_size || '-')) + '</p>';
+        el.activeSignalsWrap.appendChild(card);
+      });
+    }
+
+    // =====================================================================
+    // Render: Tabel histori
+    // =====================================================================
+    function renderHistory(historyRows) {
+      el.historyTableBody.innerHTML = '';
+      if (!historyRows || historyRows.length === 0) {
+        const tr = document.createElement('tr');
+        tr.innerHTML = '<td colspan="8" class="px-4 py-6 text-center text-slate-500">Belum ada data histori.</td>';
+        el.historyTableBody.appendChild(tr);
+        return;
+      }
+      historyRows.forEach(function (row) {
+        const tr = document.createElement('tr');
+        tr.className = 'hover:bg-slate-800/40';
+        const dirColor = row.direction === 'BUY' ? 'text-emerald-400' : row.direction === 'SELL' ? 'text-red-400' : 'text-slate-300';
+        tr.innerHTML =
+          '<td class="whitespace-nowrap px-4 py-3 text-slate-300">' + escapeHtml(fmtDateTime(row.close_time || row.timestamp_received)) + '</td>' +
+          '<td class="whitespace-nowrap px-4 py-3 font-medium text-white">' + escapeHtml(row.pair || '-') + '</td>' +
+          '<td class="whitespace-nowrap px-4 py-3 font-semibold ' + dirColor + '">' + escapeHtml(row.direction || '-') + '</td>' +
+          '<td class="whitespace-nowrap px-4 py-3 text-slate-300">' + escapeHtml(fmtNumber(row.open_price, 2)) + '</td>' +
+          '<td class="whitespace-nowrap px-4 py-3 text-slate-300">' + escapeHtml(fmtNumber(row.close_price, 2)) + '</td>' +
+          '<td class="whitespace-nowrap px-4 py-3 text-slate-300">' + escapeHtml(fmtNumber(row.lot_size, 2)) + '</td>' +
+          '<td class="whitespace-nowrap px-4 py-3 text-right font-medium ' + profitClass(row.profit_pips) + '">' + escapeHtml(fmtNumber(row.profit_pips, 1)) + '</td>' +
+          '<td class="whitespace-nowrap px-4 py-3 text-right font-medium ' + profitClass(row.profit_usd) + '">' + escapeHtml(fmtUsd(row.profit_usd)) + '</td>';
+        el.historyTableBody.appendChild(tr);
+      });
+    }
+
+    function escapeHtml(str) {
+      return String(str)
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;')
+        .replace(/'/g, '&#39;');
+    }
+
+    // =====================================================================
+    // Fetch dashboard data
+    // =====================================================================
+    let hasLoadedOnce = false;
+
+    function setLoading(isLoading) {
+      el.loadingState.classList.toggle('hidden', !isLoading);
+    }
+
+    function setFetchError(message) {
+      if (!message) {
+        el.fetchError.classList.add('hidden');
+        return;
+      }
+      el.fetchErrorMsg.textContent = message;
+      el.fetchError.classList.remove('hidden');
+    }
+
+    function fetchDashboard() {
+      if (!GAS_WEB_APP_URL) {
+        el.configWarning.classList.remove('hidden');
+        setLoading(false);
+        return;
+      }
+      el.configWarning.classList.add('hidden');
+      if (!hasLoadedOnce) setLoading(true);
+
+      // PENTING (CLAUDE.md §5.1 gotcha CORS): ini request GET biasa tanpa
+      // header Content-Type manual apapun, supaya tetap "simple request"
+      // dan tidak memicu preflight OPTIONS yang tidak bisa dijawab GAS.
+      fetch(GAS_WEB_APP_URL + '?action=' + DASHBOARD_ACTION)
+        .then(function (res) {
+          if (!res.ok) throw new Error('HTTP ' + res.status);
+          return res.json();
+        })
+        .then(function (data) {
+          if (!data || data.success !== true) {
+            throw new Error((data && data.error) || 'Response tidak valid dari server');
+          }
+          setFetchError(null);
+          renderBotStatuses(data.bot_statuses);
+          renderStats(data.stats);
+          renderEquityCurve(data.history);
+          renderActiveSignals(data.active_signals);
+          renderHistory(data.history);
+          el.lastUpdatedBadge.textContent = 'Update terakhir: ' + new Date().toLocaleTimeString('id-ID');
+          el.lastUpdatedBadge.classList.remove('hidden');
+        })
+        .catch(function (err) {
+          setFetchError(err.message || 'Terjadi kesalahan saat mengambil data.');
+        })
+        .finally(function () {
+          hasLoadedOnce = true;
+          setLoading(false);
+        });
+    }
+
+    fetchDashboard();
+    setInterval(fetchDashboard, FETCH_INTERVAL_MS);
+
+    // =====================================================================
+    // Modal generik: open/close
+    // =====================================================================
+    function openModal(id) {
+      const modal = document.getElementById(id);
+      modal.classList.remove('hidden');
+      modal.classList.add('flex');
+    }
+    function closeModal(id) {
+      const modal = document.getElementById(id);
+      modal.classList.add('hidden');
+      modal.classList.remove('flex');
+    }
+
+    document.getElementById('btnLogin').addEventListener('click', function () { openModal('loginModal'); });
+    document.getElementById('btnContact').addEventListener('click', function () { openModal('contactModal'); });
+    document.querySelectorAll('[data-close-modal]').forEach(function (btn) {
+      btn.addEventListener('click', function () { closeModal(btn.getAttribute('data-close-modal')); });
+    });
+    document.addEventListener('keydown', function (e) {
+      if (e.key === 'Escape') { closeModal('loginModal'); closeModal('contactModal'); }
+    });
+
+    // =====================================================================
+    // LOGIN FORM — PLACEHOLDER UI (lihat catatan besar di atas modal HTML).
+    // Tidak memanggil backend apapun, tidak menyimpan data di manapun.
+    // =====================================================================
+    const loginForm = document.getElementById('loginForm');
+    const loginResultMsg = document.getElementById('loginResultMsg');
+    loginForm.addEventListener('submit', function (e) {
+      e.preventDefault();
+      const email = document.getElementById('loginEmail');
+      const password = document.getElementById('loginPassword');
+      const emailError = document.getElementById('loginEmailError');
+      const passwordError = document.getElementById('loginPasswordError');
+
+      let valid = true;
+      const emailOk = /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email.value.trim());
+      if (!emailOk) { emailError.classList.remove('hidden'); valid = false; } else { emailError.classList.add('hidden'); }
+
+      const passOk = password.value.length >= 6;
+      if (!passOk) { passwordError.classList.remove('hidden'); valid = false; } else { passwordError.classList.add('hidden'); }
+
+      if (!valid) return;
+
+      // TIDAK ADA pengiriman kredensial ke server manapun di sini,
+      // dan TIDAK disimpan ke localStorage/sessionStorage/cookie.
+      loginResultMsg.textContent = 'Fitur login akan tersedia setelah backend auth siap.';
+      loginResultMsg.classList.remove('hidden');
+    });
+
+    // =====================================================================
+    // CONTACT FORM — POST asli ke backend GAS (type: "contact"). Backend
+    // yang menyimpan + kirim email lewat MailApp (lihat Webhook.gs
+    // handleContactMessage_), bukan lagi mailto: client-side.
+    // =====================================================================
+    const contactForm = document.getElementById('contactForm');
+    const contactSubmitBtn = document.getElementById('contactSubmitBtn');
+    const contactResultMsg = document.getElementById('contactResultMsg');
+
+    function setContactResult(message, isError) {
+      if (!message) { contactResultMsg.classList.add('hidden'); return; }
+      contactResultMsg.textContent = message;
+      contactResultMsg.className = 'mb-3 rounded-lg border p-2 text-xs ' +
+        (isError ? 'border-red-500/40 bg-red-500/10 text-red-300' : 'border-emerald-500/40 bg-emerald-500/10 text-emerald-300');
+    }
+
+    contactForm.addEventListener('submit', function (e) {
+      e.preventDefault();
+      const name = document.getElementById('contactName');
+      const email = document.getElementById('contactEmail');
+      const message = document.getElementById('contactMessage');
+      const nameError = document.getElementById('contactNameError');
+      const emailError = document.getElementById('contactEmailError');
+      const messageError = document.getElementById('contactMessageError');
+
+      let valid = true;
+      if (!name.value.trim()) { nameError.classList.remove('hidden'); valid = false; } else { nameError.classList.add('hidden'); }
+
+      const emailOk = /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email.value.trim());
+      if (!emailOk) { emailError.classList.remove('hidden'); valid = false; } else { emailError.classList.add('hidden'); }
+
+      if (!message.value.trim()) { messageError.classList.remove('hidden'); valid = false; } else { messageError.classList.add('hidden'); }
+
+      if (!valid) return;
+
+      handleContactSubmit({
+        name: name.value.trim(),
+        email: email.value.trim(),
+        message: message.value.trim()
+      });
+    });
+
+    /**
+     * Kirim pesan kontak ke backend GAS. Kalau GAS_WEB_APP_URL belum diisi,
+     * tampilkan error jelas (bukan silent fail / pura-pura sukses).
+     * @param {{name:string,email:string,message:string}} data
+     */
+    function handleContactSubmit(data) {
+      if (!GAS_WEB_APP_URL) {
+        setContactResult('Konfigurasi GAS_WEB_APP_URL belum diisi, pesan tidak bisa dikirim.', true);
+        return;
+      }
+      setContactResult(null);
+      contactSubmitBtn.disabled = true;
+      contactSubmitBtn.textContent = 'Mengirim...';
+
+      // PENTING (CLAUDE.md §5.1): Content-Type text/plain, bukan
+      // application/json, supaya tidak memicu CORS preflight OPTIONS yang
+      // tidak bisa dijawab Apps Script.
+      fetch(GAS_WEB_APP_URL, {
+        method: 'POST',
+        headers: { 'Content-Type': 'text/plain' },
+        body: JSON.stringify(Object.assign({ type: 'contact' }, data))
+      })
+        .then(function (res) { return res.json(); })
+        .then(function (result) {
+          if (!result || result.success !== true) {
+            throw new Error((result && result.error) || 'Gagal mengirim pesan.');
+          }
+          setContactResult('Pesan berhasil dikirim. Terima kasih!', false);
+          contactForm.reset();
+          setTimeout(function () { closeModal('contactModal'); setContactResult(null); }, 1800);
+        })
+        .catch(function (err) {
+          setContactResult(err.message || 'Gagal mengirim pesan, coba lagi.', true);
+        })
+        .finally(function () {
+          contactSubmitBtn.disabled = false;
+          contactSubmitBtn.textContent = 'Kirim Pesan';
+        });
+    }
+
+  })();
+  </script>
+
+</body>
+</html>

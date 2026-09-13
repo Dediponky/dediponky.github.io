@@ -1,0 +1,1145 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="robots" content="noindex, nofollow">
+<title>AI Forex Bot — Admin</title>
+<meta name="description" content="Dashboard admin privat AI Forex Trading Bot Orchestrator. Akses via ADMIN_TOKEN saja.">
+
+<!-- Tailwind CSS via CDN (konsisten dengan frontend/index.html: tanpa build step) -->
+<script src="https://cdn.tailwindcss.com"></script>
+<script>
+  tailwind.config = {
+    theme: {
+      extend: {
+        colors: {
+          accent: {
+            DEFAULT: '#22d3ee', // cyan-400, sama dengan dashboard publik
+            dark: '#0891b2'
+          }
+        }
+      }
+    }
+  };
+</script>
+
+<style>
+  html, body {
+    background-color: #0b1120;
+    overflow-x: hidden; /* body tidak boleh scroll horizontal, cuma tabel yang boleh */
+  }
+  ::-webkit-scrollbar { height: 8px; width: 8px; }
+  ::-webkit-scrollbar-thumb { background: #334155; border-radius: 9999px; }
+  ::-webkit-scrollbar-track { background: transparent; }
+
+  .modal-backdrop { background: rgba(2, 6, 23, 0.75); }
+
+  @keyframes pulse-dot {
+    0%, 100% { opacity: 1; }
+    50% { opacity: 0.35; }
+  }
+  .pulse-dot { animation: pulse-dot 1.6s ease-in-out infinite; }
+
+  @keyframes toast-in {
+    from { opacity: 0; transform: translateY(8px); }
+    to { opacity: 1; transform: translateY(0); }
+  }
+  .toast-item { animation: toast-in 0.15s ease-out; }
+
+  .spin { animation: spin 0.7s linear infinite; }
+  @keyframes spin { to { transform: rotate(360deg); } }
+
+  .tag-chip { display: inline-flex; align-items: center; gap: 0.25rem; }
+</style>
+</head>
+
+<body class="min-h-screen bg-slate-950 text-slate-200 font-sans antialiased">
+
+  <!-- =====================================================================
+       TOAST CONTAINER (notifikasi sukses/gagal untuk semua aksi)
+  ===================================================================== -->
+  <div id="toastContainer" class="fixed bottom-4 right-4 z-[100] flex w-full max-w-sm flex-col gap-2 px-4 sm:px-0"></div>
+
+  <!-- =====================================================================
+       GERBANG AKSES (gate) — diminta isi GAS_WEB_APP_URL + ADMIN_TOKEN.
+       Tidak ada backend auth user sungguhan (CLAUDE.md/REDME.md §5): satu-
+       satunya proteksi nyata adalah ADMIN_TOKEN yang dicocokkan server-side
+       di handleGetAdminConfig_/handleAdminAction_ (Webhook.gs). localStorage
+       di sini HANYA kenyamanan supaya admin tidak input ulang tiap buka
+       halaman di browser miliknya sendiri — BUKAN mekanisme keamanan.
+  ===================================================================== -->
+  <div id="gateScreen" class="flex min-h-screen items-center justify-center p-4">
+    <div class="w-full max-w-md rounded-2xl border border-slate-800 bg-slate-900/70 p-6 shadow-xl">
+      <div class="mb-5 flex items-center gap-2">
+        <div class="flex h-9 w-9 items-center justify-center rounded-lg bg-accent/10 text-accent">
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" class="h-5 w-5">
+            <path stroke-linecap="round" stroke-linejoin="round" d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z" />
+          </svg>
+        </div>
+        <div class="leading-tight">
+          <p class="text-sm font-bold text-white">AI Forex Bot</p>
+          <p class="text-[11px] text-slate-400">Admin Dashboard</p>
+        </div>
+      </div>
+
+      <p class="mb-4 rounded-lg border border-amber-500/30 bg-amber-500/10 p-3 text-xs leading-relaxed text-amber-200/90">
+        ⚠️ Halaman ini privat. <strong>Jangan bagikan URL halaman ini atau ADMIN_TOKEN</strong> ke siapa pun.
+        Kedua nilai di bawah akan disimpan di <code class="rounded bg-black/30 px-1 py-0.5">localStorage</code>
+        browser ini saja (tidak dikirim ke mana pun selain server GAS kamu sendiri) — sekadar kenyamanan supaya
+        tidak input ulang tiap kali buka halaman, <strong>bukan</strong> pengaman sungguhan. Siapa pun yang tahu
+        ADMIN_TOKEN bisa mengubah konfigurasi bot ini, jadi perlakukan token itu seperti password.
+      </p>
+
+      <div id="gateError" class="mb-4 hidden rounded-lg border border-red-500/40 bg-red-500/10 p-3 text-sm text-red-300"></div>
+
+      <form id="gateForm" class="space-y-3" novalidate>
+        <div>
+          <label for="gateUrl" class="mb-1 block text-xs font-medium text-slate-300">GAS Web App URL</label>
+          <input id="gateUrl" type="url" required placeholder="https://script.google.com/macros/s/xxxxx/exec"
+            class="w-full rounded-lg border border-slate-700 bg-slate-950 px-3 py-2 text-sm text-white outline-none focus:border-accent">
+        </div>
+        <div>
+          <label for="gateToken" class="mb-1 block text-xs font-medium text-slate-300">Admin Token</label>
+          <div class="flex gap-2">
+            <input id="gateToken" type="password" required placeholder="ADMIN_TOKEN"
+              class="w-full rounded-lg border border-slate-700 bg-slate-950 px-3 py-2 text-sm text-white outline-none focus:border-accent">
+            <button type="button" id="gateTokenToggle"
+              class="shrink-0 rounded-lg border border-slate-700 px-3 text-xs text-slate-300 hover:border-accent hover:text-accent">
+              Lihat
+            </button>
+          </div>
+        </div>
+
+        <button type="submit" id="gateSubmitBtn"
+          class="flex w-full items-center justify-center gap-2 rounded-lg bg-accent px-3 py-2 text-sm font-semibold text-slate-950 transition hover:bg-accent-dark disabled:cursor-not-allowed disabled:opacity-60">
+          <span id="gateSubmitLabel">Masuk sebagai Admin</span>
+        </button>
+      </form>
+
+      <button type="button" id="gateForgetBtn"
+        class="mt-3 w-full text-center text-xs text-slate-500 hover:text-slate-300">
+        Hapus data tersimpan di browser ini
+      </button>
+    </div>
+  </div>
+
+  <!-- =====================================================================
+       DASHBOARD ADMIN (setelah token tervalidasi)
+  ===================================================================== -->
+  <div id="dashboardScreen" class="hidden">
+    <header class="sticky top-0 z-30 border-b border-slate-800 bg-slate-950/90 backdrop-blur">
+      <div class="mx-auto flex max-w-6xl items-center justify-between gap-3 px-4 py-3 sm:px-6">
+        <div class="flex items-center gap-2">
+          <div class="flex h-9 w-9 items-center justify-center rounded-lg bg-accent/10 text-accent">
+            <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" class="h-5 w-5">
+              <path stroke-linecap="round" stroke-linejoin="round" d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z" />
+            </svg>
+          </div>
+          <div class="leading-tight">
+            <p class="text-sm font-bold text-white">AI Forex Bot</p>
+            <p class="text-[11px] text-slate-400">Admin Dashboard</p>
+          </div>
+        </div>
+        <div class="flex items-center gap-2">
+          <button id="btnRefresh" type="button"
+            class="flex items-center gap-1.5 rounded-lg border border-slate-700 px-3 py-1.5 text-sm font-medium text-slate-200 transition hover:border-accent hover:text-accent">
+            <svg id="refreshIcon" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" class="h-4 w-4">
+              <path stroke-linecap="round" stroke-linejoin="round" d="M4 4v5h.582m15.836 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357 2m15.357-2H15" />
+            </svg>
+            Refresh
+          </button>
+          <button id="btnLogout" type="button"
+            class="rounded-lg border border-red-500/40 px-3 py-1.5 text-sm font-medium text-red-300 transition hover:bg-red-500/10">
+            Keluar
+          </button>
+        </div>
+      </div>
+    </header>
+
+    <main class="mx-auto max-w-6xl px-4 py-6 sm:px-6">
+
+      <div id="dashLoading" class="mb-6 hidden items-center gap-3 rounded-xl border border-slate-800 bg-slate-900/50 p-4 text-slate-400">
+        <svg class="spin h-5 w-5 text-accent" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+          <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+          <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"></path>
+        </svg>
+        <span>Memuat data admin...</span>
+      </div>
+
+      <!-- ===============================================================
+           1. SWITCH AI ENABLED
+      =============================================================== -->
+      <section class="mb-6 rounded-xl border border-slate-800 bg-slate-900/60 p-4">
+        <div class="flex flex-wrap items-center justify-between gap-3">
+          <div>
+            <h2 class="text-sm font-semibold uppercase tracking-wide text-slate-400">AI Agent</h2>
+            <p class="mt-1 text-sm text-slate-300">
+              Status saat ini:
+              <span id="aiStatusText" class="font-bold text-white">-</span>
+            </p>
+          </div>
+          <button id="btnToggleAi" type="button"
+            class="relative inline-flex h-7 w-14 shrink-0 items-center rounded-full border border-slate-700 bg-slate-800 transition disabled:cursor-not-allowed disabled:opacity-60"
+            aria-label="Toggle AI Agent">
+            <span id="aiToggleKnob" class="inline-block h-5 w-5 translate-x-1 transform rounded-full bg-slate-400 transition"></span>
+          </button>
+        </div>
+      </section>
+
+      <div class="mb-6 grid grid-cols-1 gap-6 lg:grid-cols-2">
+
+        <!-- =============================================================
+             2. FORM SETTING AI
+        ============================================================= -->
+        <section class="rounded-xl border border-slate-800 bg-slate-900/60 p-4">
+          <h2 class="mb-3 text-sm font-semibold uppercase tracking-wide text-slate-400">Setting AI Provider</h2>
+          <form id="aiConfigForm" class="space-y-3" novalidate>
+            <div>
+              <label for="aiProvider" class="mb-1 block text-xs font-medium text-slate-300">Provider</label>
+              <select id="aiProvider"
+                class="w-full rounded-lg border border-slate-700 bg-slate-950 px-3 py-2 text-sm text-white outline-none focus:border-accent">
+                <option value="openai">OpenAI</option>
+                <option value="gemini">Gemini</option>
+                <option value="anthropic">Anthropic</option>
+              </select>
+            </div>
+            <div>
+              <label for="aiModel" class="mb-1 block text-xs font-medium text-slate-300">Model</label>
+              <input id="aiModel" type="text" placeholder="mis. gpt-4o-mini / gemini-1.5-flash / claude-3-5-sonnet-latest"
+                class="w-full rounded-lg border border-slate-700 bg-slate-950 px-3 py-2 text-sm text-white outline-none focus:border-accent">
+            </div>
+            <div>
+              <label for="aiBaseUrl" class="mb-1 block text-xs font-medium text-slate-300">Base URL (opsional)</label>
+              <input id="aiBaseUrl" type="text" placeholder="Kosongkan untuk pakai default provider"
+                class="w-full rounded-lg border border-slate-700 bg-slate-950 px-3 py-2 text-sm text-white outline-none focus:border-accent">
+            </div>
+            <div>
+              <label for="aiEndpoint" class="mb-1 block text-xs font-medium text-slate-300">Endpoint (opsional)</label>
+              <input id="aiEndpoint" type="text" placeholder="Override full endpoint URL (escape hatch)"
+                class="w-full rounded-lg border border-slate-700 bg-slate-950 px-3 py-2 text-sm text-white outline-none focus:border-accent">
+            </div>
+            <div>
+              <label for="aiApiKey" class="mb-1 flex items-center gap-2 text-xs font-medium text-slate-300">
+                API Key
+                <span id="aiApiKeyBadge" class="hidden rounded-full bg-emerald-500/15 px-2 py-0.5 text-[10px] font-semibold text-emerald-400">API key sudah diisi ✓</span>
+              </label>
+              <input id="aiApiKey" type="password" autocomplete="off" placeholder="Kosongkan jika tidak ingin mengubah"
+                class="w-full rounded-lg border border-slate-700 bg-slate-950 px-3 py-2 text-sm text-white outline-none focus:border-accent">
+              <p class="mt-1 text-[11px] text-slate-500">Server tidak pernah mengirim balik API key asli — ini hanya field input untuk mengganti.</p>
+            </div>
+            <button type="submit"
+              class="flex items-center justify-center gap-2 rounded-lg bg-accent px-3 py-2 text-sm font-semibold text-slate-950 transition hover:bg-accent-dark disabled:cursor-not-allowed disabled:opacity-60">
+              Simpan Setting AI
+            </button>
+          </form>
+        </section>
+
+        <!-- =============================================================
+             3. FORM URL GAS + ALLOWED PAIRS
+        ============================================================= -->
+        <div class="space-y-6">
+          <section class="rounded-xl border border-slate-800 bg-slate-900/60 p-4">
+            <h2 class="mb-3 text-sm font-semibold uppercase tracking-wide text-slate-400">URL Google Apps Script (tersimpan di server)</h2>
+            <p class="mb-2 text-xs text-slate-400">
+              Nilai saat ini di server: <span id="gasUrlCurrent" class="break-all font-mono text-slate-300">-</span>
+            </p>
+            <form id="gasUrlForm" class="space-y-3" novalidate>
+              <div>
+                <label for="gasUrlInput" class="mb-1 block text-xs font-medium text-slate-300">URL baru</label>
+                <input id="gasUrlInput" type="url" placeholder="https://script.google.com/macros/s/xxxxx/exec"
+                  class="w-full rounded-lg border border-slate-700 bg-slate-950 px-3 py-2 text-sm text-white outline-none focus:border-accent">
+              </div>
+              <p class="text-[11px] text-slate-500">
+                Ini cuma nilai yang disimpan di server untuk ditampilkan balik (mis. dibagikan ke EA), <em>berbeda</em>
+                dengan URL yang kamu isi di gerbang akses tadi (dipakai halaman ini untuk tahu ke mana harus fetch).
+              </p>
+              <button type="submit"
+                class="rounded-lg bg-accent px-3 py-2 text-sm font-semibold text-slate-950 transition hover:bg-accent-dark disabled:cursor-not-allowed disabled:opacity-60">
+                Simpan URL GAS
+              </button>
+            </form>
+          </section>
+
+          <section class="rounded-xl border border-slate-800 bg-slate-900/60 p-4">
+            <h2 class="mb-3 text-sm font-semibold uppercase tracking-wide text-slate-400">Allowed Pairs</h2>
+            <div id="pairsChips" class="mb-3 flex flex-wrap gap-2"></div>
+            <form id="pairsForm" class="space-y-3" novalidate>
+              <div>
+                <label for="pairsInput" class="mb-1 block text-xs font-medium text-slate-300">Daftar pair (pisahkan koma)</label>
+                <input id="pairsInput" type="text" placeholder="XAUUSD,EURUSD"
+                  class="w-full rounded-lg border border-slate-700 bg-slate-950 px-3 py-2 text-sm text-white outline-none focus:border-accent">
+              </div>
+              <button type="submit"
+                class="rounded-lg bg-accent px-3 py-2 text-sm font-semibold text-slate-950 transition hover:bg-accent-dark disabled:cursor-not-allowed disabled:opacity-60">
+                Simpan Pairs
+              </button>
+            </form>
+          </section>
+        </div>
+      </div>
+
+      <!-- ===============================================================
+           4. FORM TELEGRAM
+      =============================================================== -->
+      <section class="mb-6 rounded-xl border border-slate-800 bg-slate-900/60 p-4">
+        <h2 class="mb-3 text-sm font-semibold uppercase tracking-wide text-slate-400">Setting Telegram</h2>
+        <form id="telegramForm" class="grid grid-cols-1 gap-3 sm:grid-cols-2" novalidate>
+          <div>
+            <label for="tgBotToken" class="mb-1 flex items-center gap-2 text-xs font-medium text-slate-300">
+              Bot Token
+              <span id="tgBotTokenBadge" class="hidden rounded-full bg-emerald-500/15 px-2 py-0.5 text-[10px] font-semibold text-emerald-400">sudah diisi ✓</span>
+            </label>
+            <input id="tgBotToken" type="password" autocomplete="off" placeholder="Kosongkan jika tidak ingin mengubah"
+              class="w-full rounded-lg border border-slate-700 bg-slate-950 px-3 py-2 text-sm text-white outline-none focus:border-accent">
+          </div>
+          <div>
+            <label for="tgChatId" class="mb-1 block text-xs font-medium text-slate-300">Chat ID</label>
+            <input id="tgChatId" type="text" placeholder="mis. -1001234567890"
+              class="w-full rounded-lg border border-slate-700 bg-slate-950 px-3 py-2 text-sm text-white outline-none focus:border-accent">
+          </div>
+          <div class="sm:col-span-2">
+            <button type="submit"
+              class="rounded-lg bg-accent px-3 py-2 text-sm font-semibold text-slate-950 transition hover:bg-accent-dark disabled:cursor-not-allowed disabled:opacity-60">
+              Simpan Setting Telegram
+            </button>
+          </div>
+        </form>
+      </section>
+
+      <!-- ===============================================================
+           5. TAMBAH FOLLOWER
+      =============================================================== -->
+      <section class="mb-6 rounded-xl border border-slate-800 bg-slate-900/60 p-4">
+        <h2 class="mb-3 text-sm font-semibold uppercase tracking-wide text-slate-400">Tambah Follower</h2>
+        <form id="addFollowerForm" class="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-5" novalidate>
+          <div>
+            <label for="newFollowerEmail" class="mb-1 block text-xs font-medium text-slate-300">Email</label>
+            <input id="newFollowerEmail" type="email" required placeholder="nama@email.com"
+              class="w-full rounded-lg border border-slate-700 bg-slate-950 px-3 py-2 text-sm text-white outline-none focus:border-accent">
+          </div>
+          <div>
+            <label for="newFollowerAccount" class="mb-1 block text-xs font-medium text-slate-300">No. Account</label>
+            <input id="newFollowerAccount" type="text" required placeholder="12345678"
+              class="w-full rounded-lg border border-slate-700 bg-slate-950 px-3 py-2 text-sm text-white outline-none focus:border-accent">
+          </div>
+          <div>
+            <label for="newFollowerBroker" class="mb-1 block text-xs font-medium text-slate-300">Broker Server</label>
+            <input id="newFollowerBroker" type="text" required placeholder="Exness-Real"
+              class="w-full rounded-lg border border-slate-700 bg-slate-950 px-3 py-2 text-sm text-white outline-none focus:border-accent">
+          </div>
+          <div>
+            <label for="newFollowerPlatform" class="mb-1 block text-xs font-medium text-slate-300">Platform</label>
+            <select id="newFollowerPlatform"
+              class="w-full rounded-lg border border-slate-700 bg-slate-950 px-3 py-2 text-sm text-white outline-none focus:border-accent">
+              <option value="MT4">MT4</option>
+              <option value="MT5">MT5</option>
+            </select>
+          </div>
+          <div>
+            <label for="newFollowerToken" class="mb-1 block text-xs font-medium text-slate-300">Token MetaTrader</label>
+            <input id="newFollowerToken" type="text" required placeholder="token unik follower"
+              class="w-full rounded-lg border border-slate-700 bg-slate-950 px-3 py-2 text-sm text-white outline-none focus:border-accent">
+          </div>
+          <div class="sm:col-span-2 lg:col-span-5">
+            <button type="submit"
+              class="rounded-lg bg-accent px-3 py-2 text-sm font-semibold text-slate-950 transition hover:bg-accent-dark disabled:cursor-not-allowed disabled:opacity-60">
+              Tambah Follower
+            </button>
+          </div>
+        </form>
+      </section>
+
+      <!-- ===============================================================
+           6. TABEL FOLLOWER
+      =============================================================== -->
+      <section class="mb-10">
+        <h2 class="mb-3 text-sm font-semibold uppercase tracking-wide text-slate-400">Daftar Follower</h2>
+        <div class="rounded-xl border border-slate-800 bg-slate-900/60">
+          <div class="overflow-x-auto">
+            <table class="w-full min-w-[560px] text-left text-sm">
+              <thead class="border-b border-slate-800 text-xs uppercase tracking-wide text-slate-400">
+                <tr>
+                  <th class="px-4 py-3">Email</th>
+                  <th class="px-4 py-3">No. Account</th>
+                  <th class="px-4 py-3">Status</th>
+                  <th class="px-4 py-3 text-right">Aksi</th>
+                </tr>
+              </thead>
+              <tbody id="followersTableBody" class="divide-y divide-slate-800">
+                <tr>
+                  <td colspan="4" class="px-4 py-6 text-center text-slate-500">Belum ada follower.</td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </section>
+
+      <footer class="border-t border-slate-800 py-6 text-center text-xs text-slate-500">
+        AI Forex Trading Bot Orchestrator — Admin, privat. Jangan bagikan URL halaman ini atau ADMIN_TOKEN.
+      </footer>
+    </main>
+  </div>
+
+  <!-- =====================================================================
+       MODAL DETAIL FOLLOWER
+  ===================================================================== -->
+  <div id="followerModal" class="fixed inset-0 z-50 hidden items-center justify-center p-4">
+    <div class="modal-backdrop absolute inset-0" data-close-modal="followerModal"></div>
+    <div class="relative max-h-[90vh] w-full max-w-lg overflow-y-auto rounded-2xl border border-slate-800 bg-slate-900 p-5 shadow-xl">
+      <div class="mb-4 flex items-center justify-between">
+        <h3 class="text-lg font-semibold text-white">Detail Follower</h3>
+        <button type="button" class="text-slate-400 hover:text-white" data-close-modal="followerModal" aria-label="Tutup">✕</button>
+      </div>
+
+      <dl class="mb-4 grid grid-cols-1 gap-x-4 gap-y-2 rounded-lg border border-slate-800 bg-slate-950/60 p-3 text-sm sm:grid-cols-2">
+        <div><dt class="text-xs text-slate-500">Status</dt><dd id="fdStatus" class="font-semibold text-white">-</dd></div>
+        <div><dt class="text-xs text-slate-500">ID</dt><dd id="fdId" class="break-all font-mono text-[11px] text-slate-400">-</dd></div>
+        <div><dt class="text-xs text-slate-500">Dibuat</dt><dd id="fdCreatedAt" class="text-slate-300">-</dd></div>
+        <div><dt class="text-xs text-slate-500">Diupdate</dt><dd id="fdUpdatedAt" class="text-slate-300">-</dd></div>
+      </dl>
+
+      <form id="editFollowerForm" class="space-y-3" novalidate>
+        <input type="hidden" id="editFollowerId">
+        <div>
+          <label for="editFollowerEmail" class="mb-1 block text-xs font-medium text-slate-300">Email</label>
+          <input id="editFollowerEmail" type="email" required
+            class="w-full rounded-lg border border-slate-700 bg-slate-950 px-3 py-2 text-sm text-white outline-none focus:border-accent">
+        </div>
+        <div>
+          <label for="editFollowerAccount" class="mb-1 block text-xs font-medium text-slate-300">No. Account</label>
+          <input id="editFollowerAccount" type="text" required
+            class="w-full rounded-lg border border-slate-700 bg-slate-950 px-3 py-2 text-sm text-white outline-none focus:border-accent">
+        </div>
+        <div>
+          <label for="editFollowerBroker" class="mb-1 block text-xs font-medium text-slate-300">Broker Server</label>
+          <input id="editFollowerBroker" type="text" required
+            class="w-full rounded-lg border border-slate-700 bg-slate-950 px-3 py-2 text-sm text-white outline-none focus:border-accent">
+        </div>
+        <div>
+          <label for="editFollowerPlatform" class="mb-1 block text-xs font-medium text-slate-300">Platform</label>
+          <select id="editFollowerPlatform"
+            class="w-full rounded-lg border border-slate-700 bg-slate-950 px-3 py-2 text-sm text-white outline-none focus:border-accent">
+            <option value="MT4">MT4</option>
+            <option value="MT5">MT5</option>
+          </select>
+        </div>
+        <div>
+          <label for="editFollowerToken" class="mb-1 block text-xs font-medium text-slate-300">Token MetaTrader</label>
+          <div class="flex gap-2">
+            <input id="editFollowerToken" type="password" required
+              class="w-full rounded-lg border border-slate-700 bg-slate-950 px-3 py-2 text-sm text-white outline-none focus:border-accent">
+            <button type="button" id="editFollowerTokenToggle"
+              class="shrink-0 rounded-lg border border-slate-700 px-3 text-xs text-slate-300 hover:border-accent hover:text-accent">
+              Lihat
+            </button>
+          </div>
+        </div>
+
+        <div class="flex flex-wrap items-center gap-2 pt-2">
+          <button type="submit"
+            class="rounded-lg bg-accent px-3 py-2 text-sm font-semibold text-slate-950 transition hover:bg-accent-dark disabled:cursor-not-allowed disabled:opacity-60">
+            Update
+          </button>
+          <button type="button" id="btnToggleFollowerStatus"
+            class="rounded-lg border border-slate-700 px-3 py-2 text-sm font-medium text-slate-200 transition hover:border-accent hover:text-accent disabled:cursor-not-allowed disabled:opacity-60">
+            Switch On/Off
+          </button>
+          <button type="button" id="btnDeleteFollower"
+            class="ml-auto rounded-lg border border-red-500/40 px-3 py-2 text-sm font-medium text-red-300 transition hover:bg-red-500/10 disabled:cursor-not-allowed disabled:opacity-60">
+            Hapus
+          </button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <script>
+  (function () {
+    'use strict';
+
+    // =====================================================================
+    // KONFIGURASI & STATE
+    // =====================================================================
+    var LS_URL_KEY = 'aiforexbot_admin_gas_url';
+    var LS_TOKEN_KEY = 'aiforexbot_admin_token';
+
+    var state = {
+      gasUrl: '',
+      token: '',
+      config: null,
+      followers: [],
+      currentFollowerId: null
+    };
+
+    // =====================================================================
+    // Elemen DOM
+    // =====================================================================
+    var el = {
+      gateScreen: document.getElementById('gateScreen'),
+      gateForm: document.getElementById('gateForm'),
+      gateUrl: document.getElementById('gateUrl'),
+      gateToken: document.getElementById('gateToken'),
+      gateTokenToggle: document.getElementById('gateTokenToggle'),
+      gateError: document.getElementById('gateError'),
+      gateSubmitBtn: document.getElementById('gateSubmitBtn'),
+      gateSubmitLabel: document.getElementById('gateSubmitLabel'),
+      gateForgetBtn: document.getElementById('gateForgetBtn'),
+
+      dashboardScreen: document.getElementById('dashboardScreen'),
+      dashLoading: document.getElementById('dashLoading'),
+      btnRefresh: document.getElementById('btnRefresh'),
+      refreshIcon: document.getElementById('refreshIcon'),
+      btnLogout: document.getElementById('btnLogout'),
+
+      aiStatusText: document.getElementById('aiStatusText'),
+      btnToggleAi: document.getElementById('btnToggleAi'),
+      aiToggleKnob: document.getElementById('aiToggleKnob'),
+
+      aiConfigForm: document.getElementById('aiConfigForm'),
+      aiProvider: document.getElementById('aiProvider'),
+      aiModel: document.getElementById('aiModel'),
+      aiBaseUrl: document.getElementById('aiBaseUrl'),
+      aiEndpoint: document.getElementById('aiEndpoint'),
+      aiApiKey: document.getElementById('aiApiKey'),
+      aiApiKeyBadge: document.getElementById('aiApiKeyBadge'),
+
+      gasUrlCurrent: document.getElementById('gasUrlCurrent'),
+      gasUrlForm: document.getElementById('gasUrlForm'),
+      gasUrlInput: document.getElementById('gasUrlInput'),
+
+      pairsChips: document.getElementById('pairsChips'),
+      pairsForm: document.getElementById('pairsForm'),
+      pairsInput: document.getElementById('pairsInput'),
+
+      telegramForm: document.getElementById('telegramForm'),
+      tgBotToken: document.getElementById('tgBotToken'),
+      tgBotTokenBadge: document.getElementById('tgBotTokenBadge'),
+      tgChatId: document.getElementById('tgChatId'),
+
+      addFollowerForm: document.getElementById('addFollowerForm'),
+      newFollowerEmail: document.getElementById('newFollowerEmail'),
+      newFollowerAccount: document.getElementById('newFollowerAccount'),
+      newFollowerBroker: document.getElementById('newFollowerBroker'),
+      newFollowerPlatform: document.getElementById('newFollowerPlatform'),
+      newFollowerToken: document.getElementById('newFollowerToken'),
+
+      followersTableBody: document.getElementById('followersTableBody'),
+
+      followerModal: document.getElementById('followerModal'),
+      fdStatus: document.getElementById('fdStatus'),
+      fdId: document.getElementById('fdId'),
+      fdCreatedAt: document.getElementById('fdCreatedAt'),
+      fdUpdatedAt: document.getElementById('fdUpdatedAt'),
+      editFollowerForm: document.getElementById('editFollowerForm'),
+      editFollowerId: document.getElementById('editFollowerId'),
+      editFollowerEmail: document.getElementById('editFollowerEmail'),
+      editFollowerAccount: document.getElementById('editFollowerAccount'),
+      editFollowerBroker: document.getElementById('editFollowerBroker'),
+      editFollowerPlatform: document.getElementById('editFollowerPlatform'),
+      editFollowerToken: document.getElementById('editFollowerToken'),
+      editFollowerTokenToggle: document.getElementById('editFollowerTokenToggle'),
+      btnToggleFollowerStatus: document.getElementById('btnToggleFollowerStatus'),
+      btnDeleteFollower: document.getElementById('btnDeleteFollower'),
+
+      toastContainer: document.getElementById('toastContainer')
+    };
+
+    // =====================================================================
+    // Helpers umum
+    // =====================================================================
+    function escapeHtml(str) {
+      return String(str)
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;')
+        .replace(/'/g, '&#39;');
+    }
+
+    function fmtDateTime(iso) {
+      if (!iso) return '-';
+      var d = new Date(iso);
+      if (isNaN(d.getTime())) return String(iso);
+      return d.toLocaleString('id-ID', {
+        day: '2-digit', month: 'short', year: 'numeric',
+        hour: '2-digit', minute: '2-digit'
+      });
+    }
+
+    function showToast(message, type) {
+      var isError = type === 'error';
+      var wrap = document.createElement('div');
+      wrap.className = 'toast-item rounded-lg border p-3 text-sm shadow-lg ' +
+        (isError ? 'border-red-500/40 bg-red-950/90 text-red-200' : 'border-emerald-500/40 bg-emerald-950/90 text-emerald-200');
+      wrap.textContent = message;
+      el.toastContainer.appendChild(wrap);
+      setTimeout(function () {
+        wrap.style.transition = 'opacity 0.2s ease';
+        wrap.style.opacity = '0';
+        setTimeout(function () { wrap.remove(); }, 200);
+      }, 4200);
+    }
+
+    function setButtonBusy(button, busy, busyLabel, idleLabel) {
+      button.disabled = busy;
+      if (busyLabel !== undefined) {
+        button.textContent = busy ? busyLabel : idleLabel;
+      } else {
+        button.classList.toggle('opacity-60', busy);
+      }
+    }
+
+    function openModal(idOrEl) {
+      var modal = typeof idOrEl === 'string' ? document.getElementById(idOrEl) : idOrEl;
+      modal.classList.remove('hidden');
+      modal.classList.add('flex');
+    }
+    function closeModal(idOrEl) {
+      var modal = typeof idOrEl === 'string' ? document.getElementById(idOrEl) : idOrEl;
+      modal.classList.add('hidden');
+      modal.classList.remove('flex');
+    }
+    document.querySelectorAll('[data-close-modal]').forEach(function (btn) {
+      btn.addEventListener('click', function () { closeModal(btn.getAttribute('data-close-modal')); });
+    });
+    document.addEventListener('keydown', function (e) {
+      if (e.key === 'Escape') closeModal('followerModal');
+    });
+
+    // =====================================================================
+    // Fetch helpers — kontrak PERSIS Webhook.gs
+    // GET  : {gasUrl}?action=...&token={ADMIN_TOKEN} (query param "token")
+    // POST : Content-Type: text/plain (BUKAN application/json, hindari CORS
+    //        preflight — CLAUDE.md §5.1), body JSON berisi admin_token.
+    // =====================================================================
+    function adminGet(action, extraParams) {
+      var url = state.gasUrl + '?action=' + encodeURIComponent(action) + '&token=' + encodeURIComponent(state.token);
+      if (extraParams) {
+        Object.keys(extraParams).forEach(function (k) {
+          url += '&' + encodeURIComponent(k) + '=' + encodeURIComponent(extraParams[k]);
+        });
+      }
+      return fetch(url).then(function (res) {
+        return res.json().catch(function () {
+          throw new Error('Respons server bukan JSON valid (HTTP ' + res.status + ')');
+        });
+      });
+    }
+
+    function adminPost(action, fields) {
+      var body = Object.assign({ action: action, admin_token: state.token }, fields || {});
+      return fetch(state.gasUrl, {
+        method: 'POST',
+        headers: { 'Content-Type': 'text/plain' },
+        body: JSON.stringify(body)
+      }).then(function (res) {
+        return res.json().catch(function () {
+          throw new Error('Respons server bukan JSON valid (HTTP ' + res.status + ')');
+        });
+      });
+    }
+
+    // =====================================================================
+    // GERBANG AKSES
+    // =====================================================================
+    function setGateError(msg) {
+      if (!msg) { el.gateError.classList.add('hidden'); el.gateError.textContent = ''; return; }
+      el.gateError.textContent = msg;
+      el.gateError.classList.remove('hidden');
+    }
+
+    el.gateTokenToggle.addEventListener('click', function () {
+      var isPw = el.gateToken.type === 'password';
+      el.gateToken.type = isPw ? 'text' : 'password';
+      el.gateTokenToggle.textContent = isPw ? 'Sembunyikan' : 'Lihat';
+    });
+
+    el.gateForgetBtn.addEventListener('click', function () {
+      localStorage.removeItem(LS_URL_KEY);
+      localStorage.removeItem(LS_TOKEN_KEY);
+      el.gateUrl.value = '';
+      el.gateToken.value = '';
+      setGateError(null);
+      showToast('Data tersimpan di browser ini sudah dihapus.', 'success');
+    });
+
+    function tryEnterDashboard(gasUrl, token, isAutoLogin) {
+      state.gasUrl = String(gasUrl || '').trim().replace(/\/+$/, '');
+      state.token = String(token || '').trim();
+
+      if (!state.gasUrl || !state.token) {
+        setGateError('URL dan Admin Token wajib diisi.');
+        return;
+      }
+
+      setButtonBusy(el.gateSubmitBtn, true, 'Memeriksa...', 'Masuk sebagai Admin');
+      setGateError(null);
+
+      adminGet('get_admin_config')
+        .then(function (data) {
+          if (!data || data.success !== true) {
+            var msg = (data && data.error) || 'Gagal memvalidasi token admin.';
+            throw new Error(msg);
+          }
+          // Sukses: simpan ke localStorage (kenyamanan saja, lihat catatan di UI gerbang)
+          localStorage.setItem(LS_URL_KEY, state.gasUrl);
+          localStorage.setItem(LS_TOKEN_KEY, state.token);
+
+          state.config = data.config || null;
+          state.followers = data.followers || [];
+
+          el.gateScreen.classList.add('hidden');
+          el.dashboardScreen.classList.remove('hidden');
+          renderAll();
+        })
+        .catch(function (err) {
+          setGateError((isAutoLogin ? 'Sesi tersimpan tidak valid: ' : '') + (err.message || 'Terjadi kesalahan.'));
+        })
+        .finally(function () {
+          setButtonBusy(el.gateSubmitBtn, false, 'Memeriksa...', 'Masuk sebagai Admin');
+        });
+    }
+
+    el.gateForm.addEventListener('submit', function (e) {
+      e.preventDefault();
+      tryEnterDashboard(el.gateUrl.value, el.gateToken.value, false);
+    });
+
+    // Auto-login kalau ada data tersimpan dari sesi sebelumnya di browser ini.
+    (function autoLoginFromStorage() {
+      var savedUrl = localStorage.getItem(LS_URL_KEY);
+      var savedToken = localStorage.getItem(LS_TOKEN_KEY);
+      if (savedUrl && savedToken) {
+        el.gateUrl.value = savedUrl;
+        el.gateToken.value = savedToken;
+        tryEnterDashboard(savedUrl, savedToken, true);
+      }
+    })();
+
+    // =====================================================================
+    // LOGOUT
+    // =====================================================================
+    el.btnLogout.addEventListener('click', function () {
+      localStorage.removeItem(LS_URL_KEY);
+      localStorage.removeItem(LS_TOKEN_KEY);
+      state.gasUrl = '';
+      state.token = '';
+      state.config = null;
+      state.followers = [];
+      el.dashboardScreen.classList.add('hidden');
+      el.gateScreen.classList.remove('hidden');
+      el.gateUrl.value = '';
+      el.gateToken.value = '';
+      setGateError(null);
+    });
+
+    // =====================================================================
+    // REFRESH / SYNC STATE
+    // =====================================================================
+    // Catatan desain: refreshAll() SELALU menangani error-nya sendiri (toast +
+    // fallback ke gerbang kalau 401) dan TIDAK PERNAH reject ke pemanggilnya.
+    // Ini disengaja supaya pemanggil (handler tambah/update/hapus/toggle di
+    // bawah) bisa menampilkan toast sukses untuk AKSI TULIS-nya sendiri
+    // (yang memang sudah berhasil di server) tanpa tercampur/gagal-semu
+    // hanya karena panggilan refresh sesudahnya kebetulan gagal jaringan.
+    function refreshAll(silent) {
+      if (!silent) el.dashLoading.classList.remove('hidden');
+      el.refreshIcon.classList.add('spin');
+      return adminGet('get_admin_config')
+        .then(function (data) {
+          if (!data || data.success !== true) {
+            var code = data && data.code;
+            var msg = (data && data.error) || 'Gagal memuat data admin.';
+            if (code === 401) {
+              showToast('Token admin ditolak server. Silakan masuk ulang.', 'error');
+              el.btnLogout.click();
+            } else {
+              showToast(msg, 'error');
+            }
+            return false;
+          }
+          state.config = data.config || null;
+          state.followers = data.followers || [];
+          renderAll();
+          if (!silent) showToast('Data admin berhasil diperbarui.', 'success');
+          return true;
+        })
+        .catch(function (err) {
+          // Network error / respons bukan JSON, dsb — jangan silent fail.
+          showToast('Gagal memuat ulang data admin: ' + (err.message || 'kesalahan jaringan') + '. Coba klik Refresh.', 'error');
+          return false;
+        })
+        .finally(function () {
+          el.dashLoading.classList.add('hidden');
+          el.refreshIcon.classList.remove('spin');
+        });
+    }
+
+    el.btnRefresh.addEventListener('click', function () { refreshAll(false); });
+
+    // =====================================================================
+    // RENDER
+    // =====================================================================
+    function renderAll() {
+      renderAiStatus();
+      renderAiConfigForm();
+      renderGasUrlForm();
+      renderPairs();
+      renderTelegramForm();
+      renderFollowersTable();
+    }
+
+    function renderAiStatus() {
+      var enabled = !!(state.config && state.config.ai_enabled);
+      el.aiStatusText.textContent = enabled ? 'Aktif' : 'Nonaktif';
+      el.aiStatusText.className = enabled ? 'font-bold text-emerald-400' : 'font-bold text-slate-400';
+      el.btnToggleAi.classList.toggle('bg-accent/20', enabled);
+      el.btnToggleAi.classList.toggle('border-accent', enabled);
+      el.aiToggleKnob.classList.toggle('translate-x-7', enabled);
+      el.aiToggleKnob.classList.toggle('translate-x-1', !enabled);
+      el.aiToggleKnob.classList.toggle('bg-accent', enabled);
+      el.aiToggleKnob.classList.toggle('bg-slate-400', !enabled);
+    }
+
+    function renderAiConfigForm() {
+      var cfg = state.config || {};
+      el.aiProvider.value = cfg.ai_provider || 'openai';
+      el.aiModel.value = cfg.ai_model || '';
+      el.aiBaseUrl.value = cfg.ai_base_url || '';
+      el.aiEndpoint.value = cfg.ai_endpoint || '';
+      el.aiApiKey.value = '';
+      el.aiApiKeyBadge.classList.toggle('hidden', !cfg.ai_api_key_set);
+    }
+
+    function renderGasUrlForm() {
+      var cfg = state.config || {};
+      el.gasUrlCurrent.textContent = cfg.gas_web_app_url || '(belum diisi)';
+      el.gasUrlInput.value = cfg.gas_web_app_url || '';
+    }
+
+    function renderPairs() {
+      var cfg = state.config || {};
+      var pairs = cfg.allowed_pairs || [];
+      el.pairsChips.innerHTML = '';
+      if (pairs.length === 0) {
+        var empty = document.createElement('span');
+        empty.className = 'text-xs text-slate-500';
+        empty.textContent = 'Belum ada pair.';
+        el.pairsChips.appendChild(empty);
+      } else {
+        pairs.forEach(function (p) {
+          var chip = document.createElement('span');
+          chip.className = 'tag-chip rounded-full border border-slate-700 bg-slate-800/60 px-2.5 py-1 text-xs text-slate-200';
+          chip.textContent = p;
+          el.pairsChips.appendChild(chip);
+        });
+      }
+      el.pairsInput.value = pairs.join(',');
+    }
+
+    function renderTelegramForm() {
+      var cfg = state.config || {};
+      el.tgBotToken.value = '';
+      el.tgBotTokenBadge.classList.toggle('hidden', !cfg.telegram_bot_token_set);
+      el.tgChatId.value = cfg.telegram_chat_id || '';
+    }
+
+    function renderFollowersTable() {
+      el.followersTableBody.innerHTML = '';
+      var followers = state.followers || [];
+      if (followers.length === 0) {
+        var tr = document.createElement('tr');
+        tr.innerHTML = '<td colspan="4" class="px-4 py-6 text-center text-slate-500">Belum ada follower.</td>';
+        el.followersTableBody.appendChild(tr);
+        return;
+      }
+      followers.forEach(function (f) {
+        var isActive = f.status === 'active';
+        var tr = document.createElement('tr');
+        tr.className = 'hover:bg-slate-800/40';
+        tr.innerHTML =
+          '<td class="whitespace-nowrap px-4 py-3 text-slate-200">' + escapeHtml(f.email || '-') + '</td>' +
+          '<td class="whitespace-nowrap px-4 py-3 text-slate-300">' + escapeHtml(f.account_number || '-') + '</td>' +
+          '<td class="whitespace-nowrap px-4 py-3">' +
+            '<span class="rounded-full px-2 py-0.5 text-xs font-semibold ' +
+              (isActive ? 'bg-emerald-500/15 text-emerald-400' : 'bg-slate-700/50 text-slate-400') + '">' +
+              (isActive ? 'active' : 'inactive') +
+            '</span>' +
+          '</td>' +
+          '<td class="whitespace-nowrap px-4 py-3 text-right">' +
+            '<button type="button" data-detail-id="' + escapeHtml(f.id) + '" ' +
+              'class="rounded-lg border border-slate-700 px-3 py-1 text-xs font-medium text-slate-200 hover:border-accent hover:text-accent">' +
+              'Detail' +
+            '</button>' +
+          '</td>';
+        el.followersTableBody.appendChild(tr);
+      });
+
+      el.followersTableBody.querySelectorAll('[data-detail-id]').forEach(function (btn) {
+        btn.addEventListener('click', function () { openFollowerModal(btn.getAttribute('data-detail-id')); });
+      });
+    }
+
+    // =====================================================================
+    // AKSI: SWITCH AI ENABLED
+    // =====================================================================
+    el.btnToggleAi.addEventListener('click', function () {
+      var current = !!(state.config && state.config.ai_enabled);
+      var next = !current;
+      setButtonBusy(el.btnToggleAi, true);
+      adminPost('set_ai_enabled', { enabled: next })
+        .then(function (data) {
+          if (!data || data.success !== true) throw new Error((data && data.error) || 'Gagal mengubah status AI.');
+          if (!state.config) state.config = {};
+          state.config.ai_enabled = data.ai_enabled;
+          renderAiStatus();
+          showToast('AI Agent sekarang ' + (data.ai_enabled ? 'AKTIF' : 'NONAKTIF') + '.', 'success');
+        })
+        .catch(function (err) { showToast(err.message || 'Gagal mengubah status AI.', 'error'); })
+        .finally(function () { setButtonBusy(el.btnToggleAi, false); });
+    });
+
+    // =====================================================================
+    // AKSI: UPDATE AI CONFIG
+    // =====================================================================
+    el.aiConfigForm.addEventListener('submit', function (e) {
+      e.preventDefault();
+      var submitBtn = el.aiConfigForm.querySelector('button[type="submit"]');
+      var fields = {
+        provider: el.aiProvider.value,
+        model: el.aiModel.value.trim(),
+        base_url: el.aiBaseUrl.value.trim(),
+        endpoint: el.aiEndpoint.value.trim()
+      };
+      if (el.aiApiKey.value !== '') fields.api_key = el.aiApiKey.value;
+
+      setButtonBusy(submitBtn, true, 'Menyimpan...', 'Simpan Setting AI');
+      adminPost('update_ai_config', fields)
+        .then(function (data) {
+          if (!data || data.success !== true) throw new Error((data && data.error) || 'Gagal menyimpan setting AI.');
+          state.config = data.config || state.config;
+          renderAiConfigForm();
+          renderAiStatus();
+          showToast('Setting AI berhasil disimpan.', 'success');
+        })
+        .catch(function (err) { showToast(err.message || 'Gagal menyimpan setting AI.', 'error'); })
+        .finally(function () { setButtonBusy(submitBtn, false, 'Menyimpan...', 'Simpan Setting AI'); });
+    });
+
+    // =====================================================================
+    // AKSI: UPDATE GAS URL
+    // =====================================================================
+    el.gasUrlForm.addEventListener('submit', function (e) {
+      e.preventDefault();
+      var submitBtn = el.gasUrlForm.querySelector('button[type="submit"]');
+      var url = el.gasUrlInput.value.trim();
+      setButtonBusy(submitBtn, true, 'Menyimpan...', 'Simpan URL GAS');
+      adminPost('update_gas_url', { url: url })
+        .then(function (data) {
+          if (!data || data.success !== true) throw new Error((data && data.error) || 'Gagal menyimpan URL GAS.');
+          if (!state.config) state.config = {};
+          state.config.gas_web_app_url = data.gas_web_app_url;
+          renderGasUrlForm();
+          showToast('URL GAS (server) berhasil disimpan.', 'success');
+        })
+        .catch(function (err) { showToast(err.message || 'Gagal menyimpan URL GAS.', 'error'); })
+        .finally(function () { setButtonBusy(submitBtn, false, 'Menyimpan...', 'Simpan URL GAS'); });
+    });
+
+    // =====================================================================
+    // AKSI: UPDATE ALLOWED PAIRS
+    // =====================================================================
+    el.pairsForm.addEventListener('submit', function (e) {
+      e.preventDefault();
+      var submitBtn = el.pairsForm.querySelector('button[type="submit"]');
+      var pairs = el.pairsInput.value.split(',').map(function (s) { return s.trim().toUpperCase(); }).filter(Boolean);
+      setButtonBusy(submitBtn, true, 'Menyimpan...', 'Simpan Pairs');
+      adminPost('update_allowed_pairs', { pairs: pairs })
+        .then(function (data) {
+          if (!data || data.success !== true) throw new Error((data && data.error) || 'Gagal menyimpan allowed pairs.');
+          if (!state.config) state.config = {};
+          state.config.allowed_pairs = data.allowed_pairs;
+          renderPairs();
+          showToast('Allowed pairs berhasil disimpan.', 'success');
+        })
+        .catch(function (err) { showToast(err.message || 'Gagal menyimpan allowed pairs.', 'error'); })
+        .finally(function () { setButtonBusy(submitBtn, false, 'Menyimpan...', 'Simpan Pairs'); });
+    });
+
+    // =====================================================================
+    // AKSI: UPDATE TELEGRAM CONFIG
+    // =====================================================================
+    el.telegramForm.addEventListener('submit', function (e) {
+      e.preventDefault();
+      var submitBtn = el.telegramForm.querySelector('button[type="submit"]');
+      var fields = { chat_id: el.tgChatId.value.trim() };
+      if (el.tgBotToken.value !== '') fields.bot_token = el.tgBotToken.value;
+      setButtonBusy(submitBtn, true, 'Menyimpan...', 'Simpan Setting Telegram');
+      adminPost('update_telegram_config', fields)
+        .then(function (data) {
+          if (!data || data.success !== true) throw new Error((data && data.error) || 'Gagal menyimpan setting Telegram.');
+          showToast('Setting Telegram berhasil disimpan.', 'success');
+          // Respons update_telegram_config cuma balikin telegram_chat_id; refresh
+          // (fire-and-forget, error-nya ditangani sendiri oleh refreshAll) supaya
+          // telegram_bot_token_set ikut sinkron di form.
+          refreshAll(true);
+        })
+        .catch(function (err) { showToast(err.message || 'Gagal menyimpan setting Telegram.', 'error'); })
+        .finally(function () { setButtonBusy(submitBtn, false, 'Menyimpan...', 'Simpan Setting Telegram'); });
+    });
+
+    // =====================================================================
+    // AKSI: TAMBAH FOLLOWER
+    // =====================================================================
+    el.addFollowerForm.addEventListener('submit', function (e) {
+      e.preventDefault();
+      var submitBtn = el.addFollowerForm.querySelector('button[type="submit"]');
+      var follower = {
+        email: el.newFollowerEmail.value.trim(),
+        account_number: el.newFollowerAccount.value.trim(),
+        broker_server: el.newFollowerBroker.value.trim(),
+        platform: el.newFollowerPlatform.value,
+        mt_token: el.newFollowerToken.value.trim()
+      };
+      if (!follower.email || !follower.account_number || !follower.broker_server || !follower.mt_token) {
+        showToast('Semua field follower wajib diisi.', 'error');
+        return;
+      }
+      setButtonBusy(submitBtn, true, 'Menambah...', 'Tambah Follower');
+      adminPost('save_follower', { follower: follower })
+        .then(function (data) {
+          if (!data || data.success !== true) throw new Error((data && data.error) || 'Gagal menambah follower.');
+          el.addFollowerForm.reset();
+          showToast('Follower baru berhasil ditambahkan.', 'success');
+          refreshAll(true); // fire-and-forget, sinkronkan tabel follower
+        })
+        .catch(function (err) { showToast(err.message || 'Gagal menambah follower.', 'error'); })
+        .finally(function () { setButtonBusy(submitBtn, false, 'Menambah...', 'Tambah Follower'); });
+    });
+
+    // =====================================================================
+    // MODAL DETAIL FOLLOWER
+    // =====================================================================
+    function findFollower(id) {
+      return (state.followers || []).find(function (f) { return f.id === id; });
+    }
+
+    function openFollowerModal(id) {
+      var f = findFollower(id);
+      if (!f) { showToast('Follower tidak ditemukan (mungkin data sudah berubah, coba Refresh).', 'error'); return; }
+      state.currentFollowerId = id;
+
+      el.fdStatus.textContent = f.status || '-';
+      el.fdStatus.className = f.status === 'active' ? 'font-semibold text-emerald-400' : 'font-semibold text-slate-400';
+      el.fdId.textContent = f.id || '-';
+      el.fdCreatedAt.textContent = fmtDateTime(f.created_at);
+      el.fdUpdatedAt.textContent = fmtDateTime(f.updated_at);
+
+      el.editFollowerId.value = f.id || '';
+      el.editFollowerEmail.value = f.email || '';
+      el.editFollowerAccount.value = f.account_number || '';
+      el.editFollowerBroker.value = f.broker_server || '';
+      el.editFollowerPlatform.value = f.platform || 'MT4';
+      el.editFollowerToken.value = f.mt_token || '';
+      el.editFollowerToken.type = 'password';
+      el.editFollowerTokenToggle.textContent = 'Lihat';
+
+      el.btnToggleFollowerStatus.textContent = f.status === 'active' ? 'Nonaktifkan Follower' : 'Aktifkan Follower';
+
+      openModal(el.followerModal);
+    }
+
+    el.editFollowerTokenToggle.addEventListener('click', function () {
+      var isPw = el.editFollowerToken.type === 'password';
+      el.editFollowerToken.type = isPw ? 'text' : 'password';
+      el.editFollowerTokenToggle.textContent = isPw ? 'Sembunyikan' : 'Lihat';
+    });
+
+    el.editFollowerForm.addEventListener('submit', function (e) {
+      e.preventDefault();
+      var submitBtn = el.editFollowerForm.querySelector('button[type="submit"]');
+      var id = el.editFollowerId.value;
+      var follower = {
+        email: el.editFollowerEmail.value.trim(),
+        account_number: el.editFollowerAccount.value.trim(),
+        broker_server: el.editFollowerBroker.value.trim(),
+        platform: el.editFollowerPlatform.value,
+        mt_token: el.editFollowerToken.value.trim()
+      };
+      setButtonBusy(submitBtn, true, 'Menyimpan...', 'Update');
+      adminPost('update_follower', { id: id, follower: follower })
+        .then(function (data) {
+          if (!data || data.success !== true) throw new Error((data && data.error) || 'Gagal update follower.');
+          showToast('Follower berhasil diupdate.', 'success');
+          closeModal(el.followerModal);
+          refreshAll(true); // fire-and-forget, sinkronkan tabel follower
+        })
+        .catch(function (err) { showToast(err.message || 'Gagal update follower.', 'error'); })
+        .finally(function () { setButtonBusy(submitBtn, false, 'Menyimpan...', 'Update'); });
+    });
+
+    el.btnToggleFollowerStatus.addEventListener('click', function () {
+      var id = el.editFollowerId.value;
+      var f = findFollower(id);
+      if (!f) return;
+      var nextEnabled = f.status !== 'active';
+      var btn = el.btnToggleFollowerStatus;
+      // Label tombol dinamis (tergantung status saat ini) — JANGAN pakai
+      // setButtonBusy(idleLabel) generik di sini karena idleLabel-nya perlu
+      // beda antara "sukses" (label baru sesuai status baru) vs "gagal"
+      // (kembali ke label semula), bukan cuma satu string tetap.
+      var originalLabel = btn.textContent;
+      btn.disabled = true;
+      btn.textContent = 'Memproses...';
+      adminPost('toggle_follower', { id: id, enabled: nextEnabled })
+        .then(function (data) {
+          if (!data || data.success !== true) throw new Error((data && data.error) || 'Gagal mengubah status follower.');
+          showToast('Status follower diubah menjadi ' + (nextEnabled ? 'active' : 'inactive') + '.', 'success');
+          // Update optimis langsung di modal + state lokal (aksi tulis sudah
+          // dikonfirmasi server di atas), lalu sinkronkan tabel di belakang
+          // layar — modal TIDAK menunggu refresh ini supaya toast/label tidak
+          // ikut gagal-semu hanya gara-gara refresh kena hiccup jaringan.
+          f.status = nextEnabled ? 'active' : 'inactive';
+          el.fdStatus.textContent = f.status;
+          el.fdStatus.className = f.status === 'active' ? 'font-semibold text-emerald-400' : 'font-semibold text-slate-400';
+          btn.textContent = f.status === 'active' ? 'Nonaktifkan Follower' : 'Aktifkan Follower';
+          renderFollowersTable();
+          refreshAll(true); // fire-and-forget, sinkronkan ulang dari server
+        })
+        .catch(function (err) {
+          showToast(err.message || 'Gagal mengubah status follower.', 'error');
+          btn.textContent = originalLabel;
+        })
+        .finally(function () { btn.disabled = false; });
+    });
+
+    el.btnDeleteFollower.addEventListener('click', function () {
+      var id = el.editFollowerId.value;
+      var f = findFollower(id);
+      if (!f) return;
+      var confirmed = window.confirm('Hapus follower "' + (f.email || id) + '"? Aksi ini tidak bisa dibatalkan.');
+      if (!confirmed) return;
+
+      setButtonBusy(el.btnDeleteFollower, true, 'Menghapus...', 'Hapus');
+      adminPost('delete_follower', { id: id })
+        .then(function (data) {
+          if (!data || data.success !== true) throw new Error((data && data.error) || 'Gagal menghapus follower.');
+          showToast('Follower berhasil dihapus.', 'success');
+          closeModal(el.followerModal);
+          // Update optimis: buang dari state lokal dulu supaya tabel langsung
+          // update, lalu sinkronkan ulang dari server di belakang layar.
+          state.followers = (state.followers || []).filter(function (x) { return x.id !== id; });
+          renderFollowersTable();
+          refreshAll(true);
+        })
+        .catch(function (err) { showToast(err.message || 'Gagal menghapus follower.', 'error'); })
+        .finally(function () { setButtonBusy(el.btnDeleteFollower, false, 'Menghapus...', 'Hapus'); });
+    });
+
+  })();
+  </script>
+
+</body>
+</html>
