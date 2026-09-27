@@ -174,16 +174,6 @@
     </section>
 
     <!-- ===================================================================
-         SINYAL AKTIF (tambahan, dari active_signals[])
-    =================================================================== -->
-    <section class="mb-6">
-      <h2 class="mb-3 text-sm font-semibold uppercase tracking-wide text-slate-400">Sinyal Aktif</h2>
-      <div id="activeSignalsWrap" class="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
-        <p id="activeSignalsEmpty" class="text-sm text-slate-500">Tidak ada sinyal aktif saat ini.</p>
-      </div>
-    </section>
-
-    <!-- ===================================================================
          TABEL RIWAYAT TRADING AI
     =================================================================== -->
     <section class="mb-10">
@@ -374,8 +364,6 @@
       equityCanvas: document.getElementById('equityCanvas'),
       equityEmpty: document.getElementById('equityEmpty'),
 
-      activeSignalsWrap: document.getElementById('activeSignalsWrap'),
-      activeSignalsEmpty: document.getElementById('activeSignalsEmpty'),
 
       historyTableBody: document.getElementById('historyTableBody'),
     };
@@ -537,32 +525,6 @@
     }
 
     // =====================================================================
-    // Render: Sinyal aktif
-    // =====================================================================
-    function renderActiveSignals(activeSignals) {
-      el.activeSignalsWrap.innerHTML = '';
-      if (!activeSignals || activeSignals.length === 0) {
-        el.activeSignalsWrap.appendChild(el.activeSignalsEmpty);
-        return;
-      }
-      activeSignals.forEach(function (item) {
-        const s = item.signal || {};
-        const dirColor = s.new_signal === 'BUY' ? 'text-emerald-400' : s.new_signal === 'SELL' ? 'text-red-400' : 'text-slate-300';
-        const card = document.createElement('div');
-        card.className = 'rounded-xl border border-slate-800 bg-slate-900/60 p-4 text-sm';
-        card.innerHTML =
-          '<div class="mb-1 flex items-center justify-between">' +
-            '<span class="font-semibold text-white">' + escapeHtml(item.pair || '-') + '</span>' +
-            '<span class="' + dirColor + ' font-bold">' + escapeHtml(s.new_signal || '-') + '</span>' +
-          '</div>' +
-          '<p class="text-xs text-slate-400">Entry: ' + escapeHtml(String(s.zona_entry_price || '-')) + '</p>' +
-          '<p class="text-xs text-slate-400">SL: ' + escapeHtml(String(s.sl != null ? s.sl : '-')) + ' &middot; TP: ' + escapeHtml(String(s.tp != null ? s.tp : '-')) + '</p>' +
-          '<p class="text-xs text-slate-500">Lot: ' + escapeHtml(String(s.lot_size || '-')) + '</p>';
-        el.activeSignalsWrap.appendChild(card);
-      });
-    }
-
-    // =====================================================================
     // Render: Tabel histori
     // =====================================================================
     function renderHistory(historyRows) {
@@ -642,7 +604,6 @@
           renderBotStatuses(data.bot_statuses);
           renderStats(data.stats);
           renderEquityCurve(data.history);
-          renderActiveSignals(data.active_signals);
           renderHistory(data.history);
           el.lastUpdatedBadge.textContent = 'Update terakhir: ' + new Date().toLocaleTimeString('id-ID');
           el.lastUpdatedBadge.classList.remove('hidden');
