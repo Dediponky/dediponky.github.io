@@ -126,6 +126,23 @@
     </section>
 
     <!-- ===================================================================
+         FILTER PERIODE -- mengatur SEMUA angka di bawahnya (stat cards,
+         equity curve, tabel riwayat) supaya selalu dihitung dari data yang sama.
+    =================================================================== -->
+    <section class="mb-3 flex flex-wrap items-center justify-between gap-3">
+      <h2 class="text-sm font-semibold uppercase tracking-wide text-slate-400">Performa Trading AI</h2>
+      <div id="periodFilter" role="group" aria-label="Filter periode"
+           class="inline-flex flex-wrap rounded-lg border border-slate-800 bg-slate-900/60 p-1 text-xs font-semibold">
+        <button type="button" data-period="day" class="period-btn rounded-md px-3 py-1.5">Hari</button>
+        <button type="button" data-period="week" class="period-btn rounded-md px-3 py-1.5">Minggu</button>
+        <button type="button" data-period="month" class="period-btn rounded-md px-3 py-1.5">Bulan</button>
+        <button type="button" data-period="year" class="period-btn rounded-md px-3 py-1.5">Tahun</button>
+        <button type="button" data-period="all" class="period-btn rounded-md px-3 py-1.5">Semua</button>
+      </div>
+    </section>
+    <p id="periodInfo" class="mb-3 text-xs text-slate-500">-</p>
+
+    <!-- ===================================================================
          STAT CARDS (win rate, profit, total trade, drawdown, profit factor, avg trade)
     =================================================================== -->
     <section class="mb-6 grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-6">
@@ -169,7 +186,7 @@
       <h2 class="mb-3 text-sm font-semibold uppercase tracking-wide text-slate-400">Equity Curve (Akumulasi Profit USD)</h2>
       <div class="rounded-xl border border-slate-800 bg-slate-900/60 p-4">
         <canvas id="equityCanvas" class="w-full" height="160"></canvas>
-        <p id="equityEmpty" class="hidden text-sm text-slate-500">Belum ada data histori untuk digambar.</p>
+        <p id="equityEmpty" class="hidden text-sm text-slate-500">Belum ada trade pada periode ini untuk digambar.</p>
       </div>
     </section>
 
@@ -177,7 +194,10 @@
          TABEL RIWAYAT TRADING AI
     =================================================================== -->
     <section class="mb-10">
-      <h2 class="mb-3 text-sm font-semibold uppercase tracking-wide text-slate-400">Riwayat Trading AI</h2>
+      <div class="mb-3 flex flex-wrap items-baseline justify-between gap-2">
+        <h2 class="text-sm font-semibold uppercase tracking-wide text-slate-400">Riwayat Trading AI</h2>
+        <span id="historyPeriodLabel" class="text-xs text-slate-500"></span>
+      </div>
       <div class="rounded-xl border border-slate-800 bg-slate-900/60">
         <!-- overflow-x-auto DI SINI SAJA supaya body tidak ikut scroll horizontal -->
         <div class="overflow-x-auto">
@@ -205,7 +225,7 @@
     </section>
 
     <footer class="border-t border-slate-800 py-6 text-center text-xs text-slate-500">
-      AI Forex Trading Bot Orchestrator — dashboard publik, read-only. Tidak ada API key yang disimpan di halaman ini.
+      AI Forex Trading Bot Orchestrator — dashboard publik, read-only.
     </footer>
   </main>
 
@@ -339,6 +359,11 @@
 
     const FETCH_INTERVAL_MS = 45000; // polling tiap 45 detik
     const DASHBOARD_ACTION = 'get_dashboard';
+    // Jumlah trade terakhir yang diambil (batas backend getDashboardLogs) --
+    // cukup untuk filter Tahun kecuali bot sangat aktif (lihat periodInfo).
+    const HISTORY_FETCH_LIMIT = 1000;
+    const PERIOD_LABELS = { day: 'Hari ini', week: 'Minggu ini', month: 'Bulan ini', year: 'Tahun ini', all: 'Semua data' };
+    const PERIOD_STORAGE_KEY = 'afb_period';
 
     // =====================================================================
     // Elemen DOM
@@ -366,7 +391,128 @@
 
 
       historyTableBody: document.getElementById('historyTableBody'),
+      historyPeriodLabel: document.getElementById('historyPeriodLabel'),
+      periodInfo: document.getElementById('periodInfo'),
+      periodButtons: document.querySelectorAll('#periodFilter .period-btn'),
     };
+
+    // =====================================================================
+    // Filter periode (Hari/Minggu/Bulan/Tahun/Semua)
+    // =====================================================================
+    // SEMUA angka performa (stat cards, equity curve, tabel) dihitung dari
+    // kumpulan trade yang SAMA hasil filter ini, dengan rumus yang sama
+    // dengan backend Database.gs computePerformanceStats_ -- supaya win rate,
+    // drawdown, dll selalu konsisten dengan tabel yang terlihat.
+    //
+    // Waktu trade = close_time dari EA, yaitu WAKTU SERVER BROKER yang ditulis
+    // dengan akhiran "Z". Karena itu batas hari/minggu/bulan/tahun dihitung
+    // dengan komponen UTC (getUTC*) -- artinya mengikuti kalender server
+    // broker (hari trading), bukan zona waktu browser pengunjung.
+    let currentPeriod = 'all';
+    try {
+      const saved = localStorage.getItem(PERIOD_STORAGE_KEY);
+      if (saved && PERIOD_LABELS[saved]) currentPeriod = saved;
+    } catch (e) { /* storage tidak tersedia: pakai default */ }
+    let lastHistory = [];
+
+    /** @return {number} epoch ms waktu tutup trade (NaN kalau tidak valid) */
+    function tradeTime(row) {
+      return new Date(row.close_time || row.timestamp_received).getTime();
+    }
+
+    /** Awal periode (epoch ms) pada kalender "UTC" (= kalender server broker, lihat catatan di atas). */
+    function periodStart(period, nowMs) {
+      if (period === 'all') return -Infinity;
+      const d = new Date(nowMs);
+      const y = d.getUTCFullYear(), m = d.getUTCMonth(), day = d.getUTCDate();
+      if (period === 'day') return Date.UTC(y, m, day);
+      if (period === 'week') {
+        const dow = (d.getUTCDay() + 6) % 7; // Senin = 0
+        return Date.UTC(y, m, day - dow);
+      }
+      if (period === 'month') return Date.UTC(y, m, 1);
+      return Date.UTC(y, 0, 1); // year
+    }
+
+    /** Trade dalam periode, tetap urut terbaru -> lama seperti dari backend. */
+    function filterByPeriod(rows, period) {
+      const start = periodStart(period, Date.now());
+      return (rows || []).filter(function (r) {
+        const t = tradeTime(r);
+        return period === 'all' || (!isNaN(t) && t >= start);
+      });
+    }
+
+    /**
+     * Statistik performa -- rumus identik dengan Database.gs
+     * computePerformanceStats_: drawdown = penurunan terbesar dari puncak
+     * equity kumulatif (mulai 0 di awal periode), dihitung kronologis.
+     * @param {Array<Object>} rows urut terbaru -> lama
+     */
+    function computeStats(rows) {
+      const chrono = rows.slice().reverse();
+      let wins = 0, grossProfit = 0, grossLoss = 0, totalPips = 0, totalUsd = 0;
+      let cumulative = 0, peak = 0, maxDrawdown = 0;
+      chrono.forEach(function (row) {
+        const usd = Number(row.profit_usd) || 0;
+        totalUsd += usd;
+        totalPips += Number(row.profit_pips) || 0;
+        if (usd > 0) { wins++; grossProfit += usd; } else { grossLoss += Math.abs(usd); }
+        cumulative += usd;
+        if (cumulative > peak) peak = cumulative;
+        if (peak - cumulative > maxDrawdown) maxDrawdown = peak - cumulative;
+      });
+      const n = rows.length;
+      return {
+        total_trade: n,
+        win_rate: n ? (wins / n) * 100 : 0,
+        total_profit_pips: totalPips,
+        total_profit_usd: totalUsd,
+        // null = belum pernah loss (ditampilkan "∞"), sama seperti konvensi backend
+        profit_factor: grossLoss > 0 ? grossProfit / grossLoss : (grossProfit > 0 ? null : 0),
+        average_trade_usd: n ? totalUsd / n : 0,
+        max_drawdown_usd: maxDrawdown
+      };
+    }
+
+    /** Render ulang semua bagian performa untuk periode aktif. */
+    function applyPeriod() {
+      const rows = filterByPeriod(lastHistory, currentPeriod);
+      renderStats(computeStats(rows));
+      renderEquityCurve(rows);
+      renderHistory(rows);
+
+      const label = PERIOD_LABELS[currentPeriod];
+      el.historyPeriodLabel.textContent = label + ' · ' + rows.length + ' trade';
+      let info = 'Periode: ' + label + ' (' + rows.length + ' trade). Win rate, drawdown, profit & equity curve dihitung dari trade periode ini.';
+      if (lastHistory.length >= HISTORY_FETCH_LIMIT) {
+        const oldest = tradeTime(lastHistory[lastHistory.length - 1]);
+        if (currentPeriod === 'all' || oldest > periodStart(currentPeriod, Date.now())) {
+          info += ' Catatan: hanya ' + HISTORY_FETCH_LIMIT + ' trade terakhir yang dimuat, jadi periode ini mungkin belum lengkap.';
+        }
+      }
+      el.periodInfo.textContent = info;
+      stylePeriodButtons();
+    }
+
+    /** Tandai tombol periode yang aktif. */
+    function stylePeriodButtons() {
+      el.periodButtons.forEach(function (btn) {
+        const active = btn.getAttribute('data-period') === currentPeriod;
+        btn.className = 'period-btn rounded-md px-3 py-1.5 transition ' +
+          (active ? 'bg-accent text-slate-950' : 'text-slate-300 hover:text-accent');
+        btn.setAttribute('aria-pressed', active ? 'true' : 'false');
+      });
+    }
+    stylePeriodButtons();
+
+    el.periodButtons.forEach(function (btn) {
+      btn.addEventListener('click', function () {
+        currentPeriod = btn.getAttribute('data-period');
+        try { localStorage.setItem(PERIOD_STORAGE_KEY, currentPeriod); } catch (e) { /* abaikan */ }
+        applyPeriod();
+      });
+    });
 
     // =====================================================================
     // Helpers format
@@ -531,7 +677,8 @@
       el.historyTableBody.innerHTML = '';
       if (!historyRows || historyRows.length === 0) {
         const tr = document.createElement('tr');
-        tr.innerHTML = '<td colspan="8" class="px-4 py-6 text-center text-slate-500">Belum ada data histori.</td>';
+        tr.innerHTML = '<td colspan="8" class="px-4 py-6 text-center text-slate-500">' +
+          (lastHistory.length ? 'Tidak ada trade pada periode ini.' : 'Belum ada data histori.') + '</td>';
         el.historyTableBody.appendChild(tr);
         return;
       }
@@ -591,7 +738,7 @@
       // PENTING (CLAUDE.md §5.1 gotcha CORS): ini request GET biasa tanpa
       // header Content-Type manual apapun, supaya tetap "simple request"
       // dan tidak memicu preflight OPTIONS yang tidak bisa dijawab GAS.
-      fetch(GAS_WEB_APP_URL + '?action=' + DASHBOARD_ACTION)
+      fetch(GAS_WEB_APP_URL + '?action=' + DASHBOARD_ACTION + '&limit=' + HISTORY_FETCH_LIMIT)
         .then(function (res) {
           if (!res.ok) throw new Error('HTTP ' + res.status);
           return res.json();
@@ -602,9 +749,8 @@
           }
           setFetchError(null);
           renderBotStatuses(data.bot_statuses);
-          renderStats(data.stats);
-          renderEquityCurve(data.history);
-          renderHistory(data.history);
+          lastHistory = Array.isArray(data.history) ? data.history : [];
+          applyPeriod(); // stats, equity curve & tabel dari data yang sama (lihat computeStats)
           el.lastUpdatedBadge.textContent = 'Update terakhir: ' + new Date().toLocaleTimeString('id-ID');
           el.lastUpdatedBadge.classList.remove('hidden');
         })
