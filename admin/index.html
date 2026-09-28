@@ -360,6 +360,12 @@
                 class="w-full rounded-lg border border-slate-700 bg-slate-950 px-3 py-2 text-sm text-white outline-none focus:border-accent">
               <p id="ruleWaitMaxHint" class="mt-1 text-[11px] text-slate-500">Batas atas berapa lama AI boleh "didiamkan" dengan satu rencana, walau AI meminta lebih lama.</p>
             </div>
+            <div>
+              <label for="ruleMaxPositions" class="mb-1 block text-xs font-medium text-slate-300">Maks posisi per pair (averaging)</label>
+              <input id="ruleMaxPositions" type="number" step="1" inputmode="decimal"
+                class="w-full rounded-lg border border-slate-700 bg-slate-950 px-3 py-2 text-sm text-white outline-none focus:border-accent">
+              <p id="ruleMaxPositionsHint" class="mt-1 text-[11px] text-slate-500">Total posisi bot + manual. 1 = averaging tidak diizinkan. Posisi berlawanan (hedging) selalu ditolak.</p>
+            </div>
           </div>
           <button type="submit"
             class="rounded-lg bg-accent px-3 py-2 text-sm font-semibold text-slate-950 transition hover:bg-accent-dark disabled:cursor-not-allowed disabled:opacity-60">
@@ -1042,7 +1048,8 @@
       ruleSpreadPct: 'gate_spread_max_pct',
       ruleMaxSkips: 'gate_max_skips',
       ruleInterval: 'analis_interval_minutes',
-      ruleWaitMax: 'wait_max_minutes'
+      ruleWaitMax: 'wait_max_minutes',
+      ruleMaxPositions: 'max_positions'
     };
 
     function renderRulesForm() {
