@@ -432,9 +432,10 @@
             </select>
           </div>
           <div>
-            <label for="newFollowerToken" class="mb-1 block text-xs font-medium text-slate-300">Token MetaTrader</label>
-            <input id="newFollowerToken" type="text" required placeholder="token unik follower"
-              class="w-full rounded-lg border border-slate-700 bg-slate-950 px-3 py-2 text-sm text-white outline-none focus:border-accent">
+            <p class="mb-1 block text-xs font-medium text-slate-300">Token MetaTrader</p>
+            <p class="rounded-lg border border-dashed border-slate-700 bg-slate-950/60 px-3 py-2 text-xs text-slate-400">
+              Dibuat otomatis oleh server &amp; dikirim ke email follower.
+            </p>
           </div>
           <div class="sm:col-span-2 lg:col-span-5">
             <button type="submit"
@@ -526,6 +527,10 @@
           <div class="flex gap-2">
             <input id="editFollowerToken" type="password" required
               class="w-full rounded-lg border border-slate-700 bg-slate-950 px-3 py-2 text-sm text-white outline-none focus:border-accent">
+            <button type="button" id="editFollowerTokenRegen" title="Buat token baru (acak)"
+              class="shrink-0 rounded-lg border border-slate-700 px-3 text-xs text-slate-300 hover:border-accent hover:text-accent">
+              Buat baru
+            </button>
             <button type="button" id="editFollowerTokenToggle"
               class="shrink-0 rounded-lg border border-slate-700 px-3 text-xs text-slate-300 hover:border-accent hover:text-accent">
               Lihat
@@ -629,7 +634,6 @@
       newFollowerAccount: document.getElementById('newFollowerAccount'),
       newFollowerBroker: document.getElementById('newFollowerBroker'),
       newFollowerPlatform: document.getElementById('newFollowerPlatform'),
-      newFollowerToken: document.getElementById('newFollowerToken'),
 
       followersTableBody: document.getElementById('followersTableBody'),
 
@@ -650,6 +654,7 @@
       editFollowerPlatform: document.getElementById('editFollowerPlatform'),
       editFollowerToken: document.getElementById('editFollowerToken'),
       editFollowerTokenToggle: document.getElementById('editFollowerTokenToggle'),
+      editFollowerTokenRegen: document.getElementById('editFollowerTokenRegen'),
       btnToggleFollowerStatus: document.getElementById('btnToggleFollowerStatus'),
       btnResendFollowerEmail: document.getElementById('btnResendFollowerEmail'),
       btnDeleteFollower: document.getElementById('btnDeleteFollower'),
@@ -1248,11 +1253,11 @@
         email: el.newFollowerEmail.value.trim(),
         account_number: el.newFollowerAccount.value.trim(),
         broker_server: el.newFollowerBroker.value.trim(),
-        platform: el.newFollowerPlatform.value,
-        mt_token: el.newFollowerToken.value.trim()
+        platform: el.newFollowerPlatform.value
+        // mt_token TIDAK dikirim: dibuat otomatis oleh backend (handleSaveFollowerWithEmail_)
       };
-      if (!follower.email || !follower.account_number || !follower.broker_server || !follower.mt_token) {
-        showToast('Semua field follower wajib diisi.', 'error');
+      if (!follower.email || !follower.account_number || !follower.broker_server) {
+        showToast('Email, No. Akun, dan Broker Server wajib diisi.', 'error');
         return;
       }
       setButtonBusy(submitBtn, true, 'Menambah...', 'Tambah Follower');
@@ -1266,15 +1271,27 @@
           // toast sukses berarti keduanya berhasil (pelajaran dari bug
           // handleContactMessage_ sebelumnya).
           if (data.email_sent) {
-            showToast('Follower ditambahkan & email onboarding (token+EA) berhasil terkirim.', 'success');
+            showToast('Follower ditambahkan & email onboarding (token+EA) berhasil terkirim. Token: ' + (data.mt_token || '-'), 'success');
           } else {
-            showToast('Follower ditambahkan, TAPI email onboarding gagal terkirim: ' +
+            showToast('Follower ditambahkan (token: ' + (data.mt_token || '-') + '), TAPI email onboarding gagal terkirim: ' +
               (data.email_error || 'sebab tidak diketahui') + '. Klik Detail follower ini untuk kirim ulang.', 'error');
           }
           refreshAll(true); // fire-and-forget, sinkronkan tabel follower
         })
         .catch(function (err) { showToast(err.message || 'Gagal menambah follower.', 'error'); })
         .finally(function () { setButtonBusy(submitBtn, false, 'Menambah...', 'Tambah Follower'); });
+    });
+
+    // Token baru acak 32 hex (format sama dengan backend generateFollowerToken_).
+    // Baru tersimpan saat admin klik Simpan; sesi EA lama otomatis dicabut
+    // backend (update_follower), jadi follower harus mengisi token baru di EA.
+    el.editFollowerTokenRegen.addEventListener('click', function () {
+      if (!window.confirm('Buat token baru? Token lama tidak berlaku lagi setelah disimpan, dan follower harus mengisi token baru di EA-nya.')) return;
+      var bytes = new Uint8Array(16);
+      window.crypto.getRandomValues(bytes);
+      el.editFollowerToken.value = Array.prototype.map.call(bytes, function (b) { return ('0' + b.toString(16)).slice(-2); }).join('');
+      el.editFollowerToken.type = 'text';
+      showToast('Token baru dibuat. Klik Simpan untuk menerapkan, lalu kirim ulang email ke follower.', 'success');
     });
 
     // =====================================================================
