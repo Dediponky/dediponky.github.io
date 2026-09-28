@@ -459,6 +459,7 @@
                   <th class="px-4 py-3">Email</th>
                   <th class="px-4 py-3">No. Account</th>
                   <th class="px-4 py-3">Status</th>
+                  <th class="px-4 py-3">Koneksi EA</th>
                   <th class="px-4 py-3 text-right">Aksi</th>
                 </tr>
               </thead>
@@ -953,14 +954,50 @@
     }
 
     /** Cari status koneksi milik satu follower (dicocokkan by email, fallback account_number -- sama seperti label yang dibuat backend). */
+    /**
+     * Status koneksi EA milik satu follower. Dicocokkan lewat follower_id dari
+     * backend (fallback ke label email/no. akun untuk backend lama). Kalau
+     * follower punya beberapa baris (beberapa pair), yang terbaru dipakai.
+     */
     function findConnectionForFollower(follower) {
       var list = state.connections || [];
+      var best = null;
       for (var i = 0; i < list.length; i++) {
-        if (!list[i].is_master && list[i].label === (follower.email || follower.account_number)) {
-          return list[i];
-        }
+        var c = list[i];
+        if (c.is_master) continue;
+        var match = c.follower_id ? c.follower_id === follower.id
+                                  : c.label === (follower.email || follower.account_number);
+        if (!match) continue;
+        if (!best || new Date(c.last_seen).getTime() > new Date(best.last_seen).getTime()) best = c;
       }
-      return null;
+      return best;
+    }
+
+    /** "3 menit lalu" / "2 jam lalu" untuk kolom koneksi. */
+    function fmtAgo(iso) {
+      var t = new Date(iso).getTime();
+      if (isNaN(t)) return '-';
+      var sec = Math.max(0, Math.round((Date.now() - t) / 1000));
+      if (sec < 90) return 'baru saja';
+      var min = Math.round(sec / 60);
+      if (min < 60) return min + ' menit lalu';
+      var hr = Math.round(min / 60);
+      if (hr < 48) return hr + ' jam lalu';
+      return Math.round(hr / 24) + ' hari lalu';
+    }
+
+    /** HTML indikator koneksi EA follower (titik warna + teks). */
+    function connectionBadgeHtml(conn) {
+      if (!conn) {
+        return '<span class="inline-flex items-center gap-1.5 text-xs text-slate-500">' +
+          '<span class="h-2 w-2 rounded-full bg-slate-600"></span>Belum pernah terhubung</span>';
+      }
+      var dot = conn.online ? 'bg-emerald-400 pulse-dot' : 'bg-red-500';
+      var color = conn.online ? 'text-emerald-400' : 'text-red-400';
+      return '<span class="inline-flex items-center gap-1.5 text-xs font-semibold ' + color + '" title="Terakhir: ' +
+        escapeHtml(fmtDateTime(conn.last_seen)) + '">' +
+        '<span class="h-2 w-2 rounded-full ' + dot + '"></span>' + (conn.online ? 'Online' : 'Offline') +
+        '<span class="font-normal text-slate-500">· ' + escapeHtml(fmtAgo(conn.last_seen)) + '</span></span>';
     }
 
     function renderAiStatus() {
@@ -1054,7 +1091,7 @@
       var followers = state.followers || [];
       if (followers.length === 0) {
         var tr = document.createElement('tr');
-        tr.innerHTML = '<td colspan="4" class="px-4 py-6 text-center text-slate-500">Belum ada follower.</td>';
+        tr.innerHTML = '<td colspan="5" class="px-4 py-6 text-center text-slate-500">Belum ada follower.</td>';
         el.followersTableBody.appendChild(tr);
         return;
       }
@@ -1072,6 +1109,7 @@
           '<td class="whitespace-nowrap px-4 py-3">' +
             '<span class="rounded-full px-2 py-0.5 text-xs font-semibold ' + badgeClass + '">' + escapeHtml(badgeText) + '</span>' +
           '</td>' +
+          '<td class="whitespace-nowrap px-4 py-3">' + connectionBadgeHtml(findConnectionForFollower(f)) + '</td>' +
           '<td class="whitespace-nowrap px-4 py-3 text-right">' +
             '<button type="button" data-detail-id="' + escapeHtml(f.id) + '" ' +
               'class="rounded-lg border border-slate-700 px-3 py-1 text-xs font-medium text-slate-200 hover:border-accent hover:text-accent">' +
@@ -1312,10 +1350,11 @@
 
       var conn = findConnectionForFollower(f);
       if (!conn) {
-        el.fdConnection.textContent = 'Belum pernah konek';
+        el.fdConnection.textContent = 'Belum pernah terhubung';
         el.fdConnection.className = 'font-semibold text-slate-400';
       } else {
-        el.fdConnection.textContent = (conn.online ? 'Online' : 'Offline') + ' (terakhir: ' + fmtDateTime(conn.last_seen) + ')';
+        el.fdConnection.textContent = (conn.online ? 'Online' : 'Offline') + ' (terakhir: ' + fmtDateTime(conn.last_seen) +
+          ', ' + fmtAgo(conn.last_seen) + (conn.pair ? ', pair ' + conn.pair : '') + ')';
         el.fdConnection.className = conn.online ? 'font-semibold text-emerald-400' : 'font-semibold text-red-400';
       }
 
