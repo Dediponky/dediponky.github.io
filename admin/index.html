@@ -311,6 +311,11 @@
             <span><span class="block text-sm font-medium text-white">Gerbang hemat AI</span>
               <span class="block text-[11px] text-slate-500">Lewati AI (langsung HOLD, tanpa biaya) saat sideways di tengah range, berita high-impact, atau spread tidak wajar. Posisi terbuka &amp; harga dekat S/R selalu ke AI.</span></span>
           </label>
+          <label class="flex items-start gap-3 rounded-lg border border-slate-800 bg-slate-950/60 p-3 md:col-span-2">
+            <input id="ruleWaitEnabled" type="checkbox" class="mt-0.5 h-4 w-4 accent-cyan-400">
+            <span><span class="block text-sm font-medium text-white">Rencana tunggu AI</span>
+              <span class="block text-[11px] text-slate-500">Kalau AI menjawab HOLD sambil menunggu level tertentu (mis. retest zona), AI tidak ditanya ulang selama harga belum menyentuh level itu &amp; waktunya belum habis -- jawaban HOLD yang sama tidak dibayar berulang. Posisi terbuka selalu ke AI.</span></span>
+          </label>
           </div>
           <div class="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
             <div>
@@ -348,6 +353,12 @@
               <input id="ruleInterval" type="number" step="1" inputmode="decimal"
                 class="w-full rounded-lg border border-slate-700 bg-slate-950 px-3 py-2 text-sm text-white outline-none focus:border-accent">
               <p id="ruleIntervalHint" class="mt-1 text-[11px] text-slate-500">Sesuaikan dengan jadwal EA (close candle M15 = 15). Bot dianggap Off setelah 5x interval tanpa kontak.</p>
+            </div>
+            <div>
+              <label for="ruleWaitMax" class="mb-1 block text-xs font-medium text-slate-300">Rencana tunggu: lama maksimal (menit)</label>
+              <input id="ruleWaitMax" type="number" step="1" inputmode="decimal"
+                class="w-full rounded-lg border border-slate-700 bg-slate-950 px-3 py-2 text-sm text-white outline-none focus:border-accent">
+              <p id="ruleWaitMaxHint" class="mt-1 text-[11px] text-slate-500">Batas atas berapa lama AI boleh "didiamkan" dengan satu rencana, walau AI meminta lebih lama.</p>
             </div>
           </div>
           <button type="submit"
@@ -608,6 +619,7 @@
       rulesForm: document.getElementById('rulesForm'),
       ruleJsonMode: document.getElementById('ruleJsonMode'),
       ruleGateEnabled: document.getElementById('ruleGateEnabled'),
+      ruleWaitEnabled: document.getElementById('ruleWaitEnabled'),
       aiProvider: document.getElementById('aiProvider'),
       aiModel: document.getElementById('aiModel'),
       aiBaseUrl: document.getElementById('aiBaseUrl'),
@@ -1029,7 +1041,8 @@
       ruleAdx: 'gate_adx_sideways',
       ruleSpreadPct: 'gate_spread_max_pct',
       ruleMaxSkips: 'gate_max_skips',
-      ruleInterval: 'analis_interval_minutes'
+      ruleInterval: 'analis_interval_minutes',
+      ruleWaitMax: 'wait_max_minutes'
     };
 
     function renderRulesForm() {
@@ -1037,6 +1050,7 @@
       if (!rules) return; // backend lama: kartu tetap tampil kosong
       el.ruleJsonMode.checked = !!rules.json_mode;
       el.ruleGateEnabled.checked = !!rules.gate_enabled;
+      el.ruleWaitEnabled.checked = rules.wait_enabled !== false;
       Object.keys(RULE_FIELDS).forEach(function (id) {
         var name = RULE_FIELDS[id];
         var input = document.getElementById(id);
@@ -1176,7 +1190,8 @@
     el.rulesForm.addEventListener('submit', function (e) {
       e.preventDefault();
       var submitBtn = el.rulesForm.querySelector('button[type="submit"]');
-      var rules = { json_mode: el.ruleJsonMode.checked, gate_enabled: el.ruleGateEnabled.checked };
+      var rules = { json_mode: el.ruleJsonMode.checked, gate_enabled: el.ruleGateEnabled.checked,
+                    wait_enabled: el.ruleWaitEnabled.checked };
       var invalid = null;
       Object.keys(RULE_FIELDS).forEach(function (id) {
         var input = document.getElementById(id);
