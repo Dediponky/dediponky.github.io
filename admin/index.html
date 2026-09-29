@@ -313,22 +313,14 @@
           </label>
           <label class="flex items-start gap-3 rounded-lg border border-slate-800 bg-slate-950/60 p-3 md:col-span-2">
             <input id="ruleWaitEnabled" type="checkbox" class="mt-0.5 h-4 w-4 accent-cyan-400">
-            <span><span class="block text-sm font-medium text-white">Rencana tunggu AI</span>
-              <span class="block text-[11px] text-slate-500">Kalau AI menjawab HOLD sambil menunggu level tertentu (mis. retest zona), AI tidak ditanya ulang selama harga belum menyentuh level itu &amp; waktunya belum habis -- jawaban HOLD yang sama tidak dibayar berulang. Posisi terbuka selalu ke AI.</span></span>
+            <span><span class="block text-sm font-medium text-white">Rencana cek-ulang AI</span>
+              <span class="block text-[11px] text-slate-500">Tiap jawaban AI membawa batas harga &amp; waktu cek-ulang. Selama harga di dalam batas dan tidak ada kejadian baru (posisi/order berubah, sweep likuiditas, struktur M15 berubah, berita, aksi manual), AI tidak dipanggil lagi -- juga saat ada posisi terbuka (SL/TP &amp; breakeven dijaga EA).</span></span>
           </label>
-          </div>
-          <div class="rounded-lg border border-slate-800 bg-slate-950/60 p-3">
-            <label for="ruleTradeStyle" class="mb-1 block text-sm font-medium text-white">Gaya trading AI</label>
-            <select id="ruleTradeStyle"
-              class="w-full rounded-lg border border-slate-700 bg-slate-950 px-3 py-2 text-sm text-white outline-none focus:border-accent sm:w-64">
-              <option value="konservatif">Konservatif</option>
-              <option value="normal">Normal</option>
-              <option value="agresif">Agresif</option>
-            </select>
-            <p class="mt-1 text-[11px] text-slate-500"><b>Konservatif</b>: entry hanya saat harga pullback ke zona/fib 50-61.8%, ragu = HOLD (sedikit trade).
-              <b>Normal</b>: + ikut tren lewat break of structure/retest &amp; breakout searah bias D1/H4; rencana tunggu maks 60 menit.
-              <b>Agresif</b>: seperti Normal tapi cukup bias H1 &amp; momentum boleh jadi trigger; rencana tunggu maks 30 menit.
-              SL wajib, R:R minimal, blok berita &amp; maks posisi tetap berlaku di semua gaya.</p>
+          <label class="flex items-start gap-3 rounded-lg border border-slate-800 bg-slate-950/60 p-3 md:col-span-2">
+            <input id="ruleDebugReason" type="checkbox" class="mt-0.5 h-4 w-4 accent-cyan-400">
+            <span><span class="block text-sm font-medium text-white">Mode uji: AI menyertakan alasan</span>
+              <span class="block text-[11px] text-slate-500">Hanya untuk mengetes cara berpikir AI (alasan tampil di log EA, sheet AiDecisions &amp; Telegram). Matikan di produksi: EA &amp; backend hanya membaca angka, teks alasan cuma menambah token.</span></span>
+          </label>
           </div>
           <div class="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
             <div>
@@ -336,6 +328,12 @@
               <input id="ruleMinRr" type="number" step="0.1" inputmode="decimal"
                 class="w-full rounded-lg border border-slate-700 bg-slate-950 px-3 py-2 text-sm text-white outline-none focus:border-accent">
               <p id="ruleMinRrHint" class="mt-1 text-[11px] text-slate-500">Sinyal entry AI dengan R:R di bawah ini diubah jadi HOLD.</p>
+            </div>
+            <div>
+              <label for="ruleMinEv" class="mb-1 block text-xs font-medium text-slate-300">Nilai harapan minimal (R)</label>
+              <input id="ruleMinEv" type="number" step="0.05" inputmode="decimal"
+                class="w-full rounded-lg border border-slate-700 bg-slate-950 px-3 py-2 text-sm text-white outline-none focus:border-accent">
+              <p id="ruleMinEvHint" class="mt-1 text-[11px] text-slate-500">Entry hanya kalau peluang AI (dikoreksi kalibrasi) x R:R - (1 - peluang) minimal angka ini.</p>
             </div>
             <div>
               <label for="ruleNearAtr" class="mb-1 block text-xs font-medium text-slate-300">Gerbang: jarak "dekat level" (x ATR H1)</label>
@@ -368,7 +366,7 @@
               <p id="ruleIntervalHint" class="mt-1 text-[11px] text-slate-500">Sesuaikan dengan jadwal EA (close candle M15 = 15). Bot dianggap Off setelah 5x interval tanpa kontak.</p>
             </div>
             <div>
-              <label for="ruleWaitMax" class="mb-1 block text-xs font-medium text-slate-300">Rencana tunggu: lama maksimal (menit)</label>
+              <label for="ruleWaitMax" class="mb-1 block text-xs font-medium text-slate-300">Rencana cek-ulang: lama maksimal (menit)</label>
               <input id="ruleWaitMax" type="number" step="1" inputmode="decimal"
                 class="w-full rounded-lg border border-slate-700 bg-slate-950 px-3 py-2 text-sm text-white outline-none focus:border-accent">
               <p id="ruleWaitMaxHint" class="mt-1 text-[11px] text-slate-500">Batas atas berapa lama AI boleh "didiamkan" dengan satu rencana, walau AI meminta lebih lama.</p>
@@ -385,6 +383,15 @@
             Simpan Aturan
           </button>
         </form>
+      </section>
+
+      <!-- ===============================================================
+           3c. RAPOR BELAJAR AI (AiLearning.gs)
+      =============================================================== -->
+      <section class="mb-6 rounded-xl border border-slate-800 bg-slate-900/60 p-4">
+        <h2 class="mb-1 text-sm font-semibold uppercase tracking-wide text-slate-400">Rapor Belajar AI</h2>
+        <p class="mb-3 text-xs text-slate-500">Dihitung server dari trade AI akun Master &amp; keputusan HOLD (tanpa biaya AI), diumpankan balik ke AI tiap analisa. Setup dengan rata-rata R negatif setelah 8 trade diblokir otomatis; peluang AI dikoreksi setelah 10 trade.</p>
+        <div id="learningReport" class="space-y-3 text-sm text-slate-300">Memuat...</div>
       </section>
 
       <!-- ===============================================================
@@ -937,6 +944,7 @@
       renderConnections();
       renderAiConfigForm();
       renderRulesForm();
+      renderLearningReport();
       renderGasUrlForm();
       renderPairs();
       renderTelegramForm();
@@ -1062,8 +1070,40 @@
       ruleMaxSkips: 'gate_max_skips',
       ruleInterval: 'analis_interval_minutes',
       ruleWaitMax: 'wait_max_minutes',
-      ruleMaxPositions: 'max_positions'
+      ruleMaxPositions: 'max_positions',
+      ruleMinEv: 'min_ev_r'
     };
+
+    function renderLearningReport() {
+      var box = document.getElementById('learningReport');
+      var report = (state.config && state.config.ai_learning) || null;
+      if (!report || !Object.keys(report).length) {
+        box.textContent = 'Belum ada data (backend lama atau belum ada pair).';
+        return;
+      }
+      box.innerHTML = Object.keys(report).map(function (pair) {
+        var r = report[pair] || {};
+        if (r.error) return '<div><b class="text-white">' + escapeHtml(pair) + '</b>: gagal dibaca (' + escapeHtml(r.error) + ')</div>';
+        var setups = r.setups || {};
+        var rows = Object.keys(setups).map(function (k) {
+          var s = setups[k];
+          var bad = s.n >= 8 && s.avg_r !== null && s.avg_r < 0;
+          return '<tr class="border-t border-slate-800"><td class="py-1 pr-4">' + escapeHtml(k) + (bad ? ' <span class="text-rose-400">(diblokir)</span>' : '') +
+            '</td><td class="py-1 pr-4 text-right">' + s.n + '</td><td class="py-1 pr-4 text-right">' + s.win_rate + '%</td>' +
+            '<td class="py-1 text-right ' + (s.avg_r > 0 ? 'text-emerald-400' : (s.avg_r < 0 ? 'text-rose-400' : '')) + '">' +
+            (s.avg_r === null ? '-' : s.avg_r + 'R') + '</td></tr>';
+        }).join('');
+        var c = r.calibration;
+        var h = r.holds;
+        return '<div class="rounded-lg border border-slate-800 bg-slate-950/60 p-3">' +
+          '<div class="mb-2 font-medium text-white">' + escapeHtml(pair) + ' <span class="text-xs text-slate-500">(' + (r.trades || 0) + ' trade AI tercatat)</span></div>' +
+          (rows ? '<table class="mb-2 w-full text-xs"><thead class="text-slate-500"><tr><th class="text-left">Setup</th><th class="text-right">Trade</th><th class="text-right">Win</th><th class="text-right">Rata-rata</th></tr></thead><tbody>' + rows + '</tbody></table>'
+                : '<div class="mb-2 text-xs text-slate-500">Belum ada trade AI dengan kode setup.</div>') +
+          '<div class="text-xs text-slate-400">Kalibrasi peluang: ' + (c ? 'AI rata-rata bilang ' + Math.round(c.avg_p * 100) + '%, kenyataan menang ' + Math.round(c.win_rate * 100) + '% (' + c.n + ' trade)' : 'belum ada data') + '</div>' +
+          '<div class="text-xs text-slate-400">HOLD dievaluasi: ' + (h ? h.evaluated + ', melewatkan gerak besar: ' + h.missed + (h.missed ? ' (rata-rata ' + h.avg_missed_atr + 'x ATR)' : '') : 'belum ada data') + '</div>' +
+          '</div>';
+      }).join('');
+    }
 
     function renderRulesForm() {
       var rules = (state.config && state.config.trading_rules) || null;
@@ -1071,7 +1111,7 @@
       el.ruleJsonMode.checked = !!rules.json_mode;
       el.ruleGateEnabled.checked = !!rules.gate_enabled;
       el.ruleWaitEnabled.checked = rules.wait_enabled !== false;
-      document.getElementById('ruleTradeStyle').value = rules.trade_style || 'normal';
+      document.getElementById('ruleDebugReason').checked = rules.debug_reason === true;
       Object.keys(RULE_FIELDS).forEach(function (id) {
         var name = RULE_FIELDS[id];
         var input = document.getElementById(id);
@@ -1213,7 +1253,7 @@
       var submitBtn = el.rulesForm.querySelector('button[type="submit"]');
       var rules = { json_mode: el.ruleJsonMode.checked, gate_enabled: el.ruleGateEnabled.checked,
                     wait_enabled: el.ruleWaitEnabled.checked,
-                    trade_style: document.getElementById('ruleTradeStyle').value };
+                    debug_reason: document.getElementById('ruleDebugReason').checked };
       var invalid = null;
       Object.keys(RULE_FIELDS).forEach(function (id) {
         var input = document.getElementById(id);
