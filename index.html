@@ -116,6 +116,16 @@
     </div>
 
     <!-- ===================================================================
+         PILIH MASTER -- tiap Master = akun & portofolio sendiri (tidak dicampur).
+         Tab hanya tampil kalau ada lebih dari satu Master.
+    =================================================================== -->
+    <section id="masterTabsSection" class="mb-5 hidden">
+      <div id="masterTabs" role="tablist" aria-label="Pilih portofolio Master"
+           class="inline-flex flex-wrap gap-1 rounded-lg border border-slate-800 bg-slate-900/60 p-1 text-sm font-semibold"></div>
+      <p id="masterStrategy" class="mt-2 text-xs text-slate-400"></p>
+    </section>
+
+    <!-- ===================================================================
          STATUS BOT PER PAIR
     =================================================================== -->
     <section class="mb-6">
@@ -271,6 +281,11 @@
             placeholder="Nama server broker Anda">
           <p id="followBrokerError" class="mt-1 hidden text-xs text-red-400">Broker Server wajib diisi.</p>
         </div>
+        <div id="followMasterWrap" class="hidden">
+          <label for="followMaster" class="mb-1 block text-xs font-medium text-slate-300">Ikuti Master</label>
+          <select id="followMaster"
+            class="w-full rounded-lg border border-slate-700 bg-slate-950 px-3 py-2 text-sm text-white outline-none focus:border-accent"></select>
+        </div>
         <div>
           <label for="followPlatform" class="mb-1 block text-xs font-medium text-slate-300">Platform</label>
           <select id="followPlatform"
@@ -414,6 +429,63 @@
       if (saved && PERIOD_LABELS[saved]) currentPeriod = saved;
     } catch (e) { /* storage tidak tersedia: pakai default */ }
     let lastHistory = [];
+
+    // =====================================================================
+    // Portofolio per Master (tab). Data tiap Master dari backend
+    // (get_dashboard -> masters[]) dihitung terpisah, tidak pernah digabung.
+    // =====================================================================
+    const MASTER_STORAGE_KEY = 'afb_master_tab';
+    let currentMasterId = null;
+    try { currentMasterId = localStorage.getItem(MASTER_STORAGE_KEY); } catch (e) { /* default Master pertama */ }
+    let lastDashboard = null;
+
+    /** Daftar Master dari respons (backend lama tanpa `masters` = satu Master). */
+    function mastersOf(data) {
+      if (data && Array.isArray(data.masters) && data.masters.length) return data.masters;
+      return [{ id: 'm1', name: 'Master 1', bot_statuses: data.bot_statuses, history: data.history }];
+    }
+
+    function renderMasterTabs(masters) {
+      const section = document.getElementById('masterTabsSection');
+      const tabs = document.getElementById('masterTabs');
+      if (!masters.some(function (m) { return m.id === currentMasterId; })) currentMasterId = masters[0].id;
+      section.classList.toggle('hidden', masters.length < 2);
+      tabs.innerHTML = masters.map(function (m) {
+        const active = m.id === currentMasterId;
+        return '<button type="button" role="tab" aria-selected="' + active + '" data-master="' + escapeHtml(m.id) + '" ' +
+          'class="rounded-md px-4 py-1.5 ' + (active ? 'bg-accent text-slate-950' : 'text-slate-300 hover:bg-slate-800') + '">' +
+          escapeHtml(m.name) + '</button>';
+      }).join('');
+      const current = masters.find(function (m) { return m.id === currentMasterId; });
+      document.getElementById('masterStrategy').textContent = current && current.strategy_label ? 'Strategi: ' + current.strategy_label : '';
+      // Pilihan Master di form "Ngikut".
+      const sel = document.getElementById('followMaster');
+      const prev = sel.value;
+      sel.innerHTML = masters.map(function (m) {
+        return '<option value="' + escapeHtml(m.id) + '">' + escapeHtml(m.name) + (m.strategy_label ? ' — ' + escapeHtml(m.strategy_label) : '') + '</option>';
+      }).join('');
+      sel.value = prev || currentMasterId;
+      document.getElementById('followMasterWrap').classList.toggle('hidden', masters.length < 2);
+    }
+
+    /** Tampilkan portofolio Master yang dipilih (status, statistik, grafik, tabel). */
+    function showCurrentMaster() {
+      if (!lastDashboard) return;
+      const masters = mastersOf(lastDashboard);
+      renderMasterTabs(masters);
+      const m = masters.find(function (x) { return x.id === currentMasterId; }) || masters[0];
+      renderBotStatuses(m.bot_statuses);
+      lastHistory = Array.isArray(m.history) ? m.history : [];
+      applyPeriod(); // stats, equity curve & tabel dari data yang sama (lihat computeStats)
+    }
+
+    document.getElementById('masterTabs').addEventListener('click', function (e) {
+      const btn = e.target.closest('[data-master]');
+      if (!btn) return;
+      currentMasterId = btn.getAttribute('data-master');
+      try { localStorage.setItem(MASTER_STORAGE_KEY, currentMasterId); } catch (err) { /* abaikan */ }
+      showCurrentMaster();
+    });
 
     /** @return {number} epoch ms waktu tutup trade (NaN kalau tidak valid) */
     function tradeTime(row) {
@@ -748,9 +820,8 @@
             throw new Error((data && data.error) || 'Response tidak valid dari server');
           }
           setFetchError(null);
-          renderBotStatuses(data.bot_statuses);
-          lastHistory = Array.isArray(data.history) ? data.history : [];
-          applyPeriod(); // stats, equity curve & tabel dari data yang sama (lihat computeStats)
+          lastDashboard = data;
+          showCurrentMaster();
           el.lastUpdatedBadge.textContent = 'Update terakhir: ' + new Date().toLocaleTimeString('id-ID');
           el.lastUpdatedBadge.classList.remove('hidden');
         })
@@ -845,7 +916,8 @@
           email: email.value.trim(),
           account_number: account.value.trim(),
           broker_server: broker.value.trim(),
-          platform: platform.value
+          platform: platform.value,
+          master_id: document.getElementById('followMaster').value || 'm1'
         })
       })
         .then(function (res) { return res.json(); })

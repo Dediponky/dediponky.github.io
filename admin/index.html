@@ -440,11 +440,37 @@
       </section>
 
       <!-- ===============================================================
+           4b. MASTER (akun & portofolio terpisah, strategi masing-masing)
+      =============================================================== -->
+      <section class="mb-6 rounded-xl border border-slate-800 bg-slate-900/60 p-4">
+        <h2 class="mb-1 text-sm font-semibold uppercase tracking-wide text-slate-400">Master</h2>
+        <p class="mb-3 text-xs text-slate-500">Tiap Master = satu akun MT5 dengan token, strategi AI, sinyal, statistik &amp; follower sendiri (tidak dicampur). Pasang EA_Master yang sama di akun Master baru, isi input <code>EaSecurityToken</code> dengan token Master tersebut.</p>
+        <div id="mastersList" class="mb-4 space-y-3 text-sm">Memuat...</div>
+        <form id="addMasterForm" class="grid grid-cols-1 gap-3 sm:grid-cols-3" novalidate>
+          <div>
+            <label for="newMasterName" class="mb-1 block text-xs font-medium text-slate-300">Nama Master baru</label>
+            <input id="newMasterName" type="text" maxlength="60" placeholder="mis. Master 2 - Hakim" class="w-full rounded-lg border border-slate-700 bg-slate-950 px-3 py-2 text-sm text-white outline-none focus:border-accent">
+          </div>
+          <div>
+            <label for="newMasterStrategy" class="mb-1 block text-xs font-medium text-slate-300">Strategi</label>
+            <select id="newMasterStrategy" class="w-full rounded-lg border border-slate-700 bg-slate-950 px-3 py-2 text-sm text-white outline-none focus:border-accent"></select>
+          </div>
+          <div class="flex items-end">
+            <button type="submit" class="rounded-lg bg-accent px-3 py-2 text-sm font-semibold text-slate-950 transition hover:bg-accent-dark disabled:cursor-not-allowed disabled:opacity-60">Tambah Master</button>
+          </div>
+        </form>
+      </section>
+
+      <!-- ===============================================================
            5. TAMBAH FOLLOWER
       =============================================================== -->
       <section class="mb-6 rounded-xl border border-slate-800 bg-slate-900/60 p-4">
         <h2 class="mb-3 text-sm font-semibold uppercase tracking-wide text-slate-400">Tambah Follower</h2>
-        <form id="addFollowerForm" class="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-5" novalidate>
+        <form id="addFollowerForm" class="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-6" novalidate>
+          <div>
+            <label for="newFollowerMaster" class="mb-1 block text-xs font-medium text-slate-300">Ikuti Master</label>
+            <select id="newFollowerMaster" class="w-full rounded-lg border border-slate-700 bg-slate-950 px-3 py-2 text-sm text-white outline-none focus:border-accent"></select>
+          </div>
           <div>
             <label for="newFollowerEmail" class="mb-1 block text-xs font-medium text-slate-300">Email</label>
             <input id="newFollowerEmail" type="email" required placeholder="nama@email.com"
@@ -474,7 +500,7 @@
               Dibuat otomatis oleh server &amp; dikirim ke email follower.
             </p>
           </div>
-          <div class="sm:col-span-2 lg:col-span-5">
+          <div class="sm:col-span-2 lg:col-span-6">
             <button type="submit"
               class="rounded-lg bg-accent px-3 py-2 text-sm font-semibold text-slate-950 transition hover:bg-accent-dark disabled:cursor-not-allowed disabled:opacity-60">
               Tambah Follower
@@ -495,6 +521,7 @@
                 <tr>
                   <th class="px-4 py-3">Email</th>
                   <th class="px-4 py-3">No. Account</th>
+                  <th class="px-4 py-3">Master</th>
                   <th class="px-4 py-3">Status</th>
                   <th class="px-4 py-3">Koneksi EA</th>
                   <th class="px-4 py-3 text-right">Aksi</th>
@@ -551,6 +578,11 @@
           <label for="editFollowerBroker" class="mb-1 block text-xs font-medium text-slate-300">Broker Server</label>
           <input id="editFollowerBroker" type="text" required
             class="w-full rounded-lg border border-slate-700 bg-slate-950 px-3 py-2 text-sm text-white outline-none focus:border-accent">
+        </div>
+        <div>
+          <label for="editFollowerMaster" class="mb-1 block text-xs font-medium text-slate-300">Ikuti Master</label>
+          <select id="editFollowerMaster" class="w-full rounded-lg border border-slate-700 bg-slate-950 px-3 py-2 text-sm text-white outline-none focus:border-accent"></select>
+          <p class="mt-1 text-[11px] text-slate-500">Pindah Master = EA follower connect ulang &amp; mulai mengikuti sinyal Master baru.</p>
         </div>
         <div>
           <label for="editFollowerPlatform" class="mb-1 block text-xs font-medium text-slate-300">Platform</label>
@@ -945,6 +977,7 @@
       renderAiConfigForm();
       renderRulesForm();
       renderLearningReport();
+      renderMasters();
       renderGasUrlForm();
       renderPairs();
       renderTelegramForm();
@@ -1074,6 +1107,133 @@
       ruleMinEv: 'min_ev_r'
     };
 
+    // =====================================================================
+    // MASTER (akun & portofolio terpisah)
+    // =====================================================================
+    function mastersList() {
+      return (state.config && Array.isArray(state.config.masters) && state.config.masters.length)
+        ? state.config.masters : [{ id: 'm1', name: 'Master 1', strategy: 'free', builtin: true, token: '' }];
+    }
+
+    function masterName(id) {
+      var m = mastersList().find(function (x) { return x.id === (id || 'm1'); });
+      return m ? m.name : (id || 'Master 1');
+    }
+
+    function strategyOptionsHtml(selected) {
+      var strategies = (state.config && state.config.master_strategies) || { free: 'AI bebas', judge: 'AI sebagai hakim' };
+      return Object.keys(strategies).map(function (k) {
+        return '<option value="' + escapeHtml(k) + '"' + (k === selected ? ' selected' : '') + '>' + escapeHtml(strategies[k]) + '</option>';
+      }).join('');
+    }
+
+    function renderMasters() {
+      var masters = mastersList();
+      var conns = state.connections || [];
+      document.getElementById('mastersList').innerHTML = masters.map(function (m) {
+        var conn = conns.find(function (c) { return c.is_master && c.master_id === m.id; });
+        var online = conn ? '<span class="' + (conn.online ? 'text-emerald-400' : 'text-red-400') + '">' + (conn.online ? 'Online' : 'Offline') + '</span>'
+                          : '<span class="text-slate-500">belum pernah konek</span>';
+        return '<div class="rounded-lg border border-slate-800 bg-slate-950/60 p-3" data-master-row="' + escapeHtml(m.id) + '">' +
+          '<div class="grid grid-cols-1 gap-2 sm:grid-cols-3">' +
+            '<input data-m-name value="' + escapeHtml(m.name) + '" maxlength="60" class="rounded-lg border border-slate-700 bg-slate-950 px-3 py-1.5 text-sm text-white outline-none focus:border-accent">' +
+            '<select data-m-strategy class="rounded-lg border border-slate-700 bg-slate-950 px-3 py-1.5 text-sm text-white outline-none focus:border-accent">' + strategyOptionsHtml(m.strategy) + '</select>' +
+            '<div class="flex items-center gap-2 text-xs">Status EA: ' + online + '</div>' +
+          '</div>' +
+          '<div class="mt-2 grid grid-cols-1 gap-2 text-xs sm:grid-cols-3">' +
+            '<label class="flex items-center gap-2 text-slate-400">Maks entry/hari' +
+              '<input data-m-trades type="number" min="0" max="20" step="1" value="' + (m.max_trades_day || 0) + '" class="w-16 rounded border border-slate-700 bg-slate-950 px-2 py-1 text-white">' +
+              '<span class="text-slate-500">(0 = bebas)</span></label>' +
+            '<label class="flex items-center gap-2 text-slate-400">Stop setelah loss/hari' +
+              '<input data-m-losses type="number" min="0" max="10" step="1" value="' + (m.max_losses_day || 0) + '" class="w-16 rounded border border-slate-700 bg-slate-950 px-2 py-1 text-white">' +
+              '<span class="text-slate-500">(0 = bebas)</span></label>' +
+            '<label class="flex items-center gap-2 text-slate-400" title="EA v4: posisi dibuka tanpa TP, 50% ditutup di +2R, sisanya SL mengikuti swing M15">' +
+              '<input data-m-runner type="checkbox"' + (m.runner ? ' checked' : '') + ' class="h-4 w-4 accent-cyan-400">' +
+              'Runner: 50% di +2R, sisanya trailing</label>' +
+          '</div>' +
+          '<div class="mt-2 flex flex-wrap items-center gap-2 text-xs">' +
+            '<span class="text-slate-500">Token:</span>' +
+            '<code data-m-token class="rounded bg-slate-900 px-2 py-1 font-mono text-slate-300">••••••••</code>' +
+            '<button type="button" data-m-act="show" class="rounded border border-slate-700 px-2 py-1 text-slate-300 hover:border-accent hover:text-accent">Lihat</button>' +
+            '<button type="button" data-m-act="copy" class="rounded border border-slate-700 px-2 py-1 text-slate-300 hover:border-accent hover:text-accent">Salin</button>' +
+            '<button type="button" data-m-act="save" class="rounded border border-slate-700 px-2 py-1 text-slate-300 hover:border-accent hover:text-accent">Simpan pengaturan</button>' +
+            (m.builtin ? '<span class="text-slate-500">(token Master 1 = EA_SECURITY_TOKEN)</span>' :
+              '<button type="button" data-m-act="regen" class="rounded border border-slate-700 px-2 py-1 text-amber-300 hover:border-amber-400">Token baru</button>' +
+              '<button type="button" data-m-act="delete" class="rounded border border-slate-700 px-2 py-1 text-red-300 hover:border-red-400">Hapus</button>') +
+          '</div></div>';
+      }).join('');
+      document.getElementById('newMasterStrategy').innerHTML = strategyOptionsHtml('judge');
+      ['newFollowerMaster', 'editFollowerMaster'].forEach(function (id) {
+        var sel = document.getElementById(id);
+        var prev = sel.value;
+        sel.innerHTML = masters.map(function (m) { return '<option value="' + escapeHtml(m.id) + '">' + escapeHtml(m.name) + '</option>'; }).join('');
+        if (prev) sel.value = prev;
+      });
+    }
+
+    document.getElementById('mastersList').addEventListener('click', function (e) {
+      var btn = e.target.closest('[data-m-act]');
+      if (!btn) return;
+      var row = btn.closest('[data-master-row]');
+      var id = row.getAttribute('data-master-row');
+      var m = mastersList().find(function (x) { return x.id === id; });
+      var act = btn.getAttribute('data-m-act');
+      var tokenEl = row.querySelector('[data-m-token]');
+      if (act === 'show') {
+        var hidden = tokenEl.textContent === '••••••••';
+        tokenEl.textContent = hidden ? (m.token || '(kosong)') : '••••••••';
+        btn.textContent = hidden ? 'Sembunyikan' : 'Lihat';
+        return;
+      }
+      if (act === 'copy') {
+        navigator.clipboard.writeText(m.token || '').then(function () { showToast('Token ' + m.name + ' disalin.', 'success'); },
+          function () { showToast('Gagal menyalin -- klik Lihat lalu salin manual.', 'error'); });
+        return;
+      }
+      var call;
+      if (act === 'save') {
+        call = adminPost('update_master', { id: id, name: row.querySelector('[data-m-name]').value.trim(),
+                                            strategy: row.querySelector('[data-m-strategy]').value,
+                                            max_trades_day: Number(row.querySelector('[data-m-trades]').value) || 0,
+                                            max_losses_day: Number(row.querySelector('[data-m-losses]').value) || 0,
+                                            runner: row.querySelector('[data-m-runner]').checked });
+      } else if (act === 'regen') {
+        if (!window.confirm('Buat token baru untuk ' + m.name + '? EA dengan token lama langsung terputus sampai token baru diisi.')) return;
+        call = adminPost('regenerate_master_token', { id: id });
+      } else if (act === 'delete') {
+        if (!window.confirm('Hapus ' + m.name + '? Riwayat trading-nya tetap tersimpan di sheet, tapi EA-nya tidak bisa konek lagi.')) return;
+        call = adminPost('delete_master', { id: id });
+      } else {
+        return;
+      }
+      btn.disabled = true;
+      call.then(function (data) {
+        if (!data || data.success !== true) throw new Error((data && data.error) || 'Aksi gagal.');
+        state.config = data.config || state.config;
+        renderMasters();
+        renderFollowersTable();
+        showToast(act === 'regen' ? 'Token baru dibuat -- isi di input EaSecurityToken EA Master tersebut.' : 'Master diperbarui.', 'success');
+      }).catch(function (err) { showToast(err.message || 'Aksi gagal.', 'error'); })
+        .finally(function () { btn.disabled = false; });
+    });
+
+    document.getElementById('addMasterForm').addEventListener('submit', function (e) {
+      e.preventDefault();
+      var btn = e.target.querySelector('button[type="submit"]');
+      setButtonBusy(btn, true, 'Menambah...', 'Tambah Master');
+      adminPost('add_master', { name: document.getElementById('newMasterName').value.trim(),
+                                strategy: document.getElementById('newMasterStrategy').value })
+        .then(function (data) {
+          if (!data || data.success !== true) throw new Error((data && data.error) || 'Gagal menambah Master.');
+          state.config = data.config || state.config;
+          e.target.reset();
+          renderMasters();
+          showToast('Master ditambahkan. Salin tokennya ke input EaSecurityToken EA_Master di akun baru.', 'success');
+        })
+        .catch(function (err) { showToast(err.message || 'Gagal menambah Master.', 'error'); })
+        .finally(function () { setButtonBusy(btn, false, 'Menambah...', 'Tambah Master'); });
+    });
+
     function renderLearningReport() {
       var box = document.getElementById('learningReport');
       var report = (state.config && state.config.ai_learning) || null;
@@ -1166,7 +1326,7 @@
       var followers = state.followers || [];
       if (followers.length === 0) {
         var tr = document.createElement('tr');
-        tr.innerHTML = '<td colspan="5" class="px-4 py-6 text-center text-slate-500">Belum ada follower.</td>';
+        tr.innerHTML = '<td colspan="6" class="px-4 py-6 text-center text-slate-500">Belum ada follower.</td>';
         el.followersTableBody.appendChild(tr);
         return;
       }
@@ -1181,6 +1341,7 @@
         tr.innerHTML =
           '<td class="whitespace-nowrap px-4 py-3 text-slate-200">' + escapeHtml(f.email || '-') + '</td>' +
           '<td class="whitespace-nowrap px-4 py-3 text-slate-300">' + escapeHtml(f.account_number || '-') + '</td>' +
+          '<td class="whitespace-nowrap px-4 py-3 text-slate-300">' + escapeHtml(masterName(f.master_id)) + '</td>' +
           '<td class="whitespace-nowrap px-4 py-3">' +
             '<span class="rounded-full px-2 py-0.5 text-xs font-semibold ' + badgeClass + '">' + escapeHtml(badgeText) + '</span>' +
           '</td>' +
@@ -1368,7 +1529,8 @@
         email: el.newFollowerEmail.value.trim(),
         account_number: el.newFollowerAccount.value.trim(),
         broker_server: el.newFollowerBroker.value.trim(),
-        platform: el.newFollowerPlatform.value
+        platform: el.newFollowerPlatform.value,
+        master_id: document.getElementById('newFollowerMaster').value || 'm1'
         // mt_token TIDAK dikirim: dibuat otomatis oleh backend (handleSaveFollowerWithEmail_)
       };
       if (!follower.email || !follower.account_number || !follower.broker_server) {
@@ -1444,6 +1606,7 @@
       el.editFollowerAccount.value = f.account_number || '';
       el.editFollowerBroker.value = f.broker_server || '';
       el.editFollowerPlatform.value = f.platform || 'MT4';
+      document.getElementById('editFollowerMaster').value = f.master_id || 'm1';
       el.editFollowerToken.value = f.mt_token || '';
       el.editFollowerToken.type = 'password';
       el.editFollowerTokenToggle.textContent = 'Lihat';
@@ -1468,7 +1631,8 @@
         account_number: el.editFollowerAccount.value.trim(),
         broker_server: el.editFollowerBroker.value.trim(),
         platform: el.editFollowerPlatform.value,
-        mt_token: el.editFollowerToken.value.trim()
+        mt_token: el.editFollowerToken.value.trim(),
+        master_id: document.getElementById('editFollowerMaster').value || 'm1'
       };
       setButtonBusy(submitBtn, true, 'Menyimpan...', 'Update');
       adminPost('update_follower', { id: id, follower: follower })
