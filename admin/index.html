@@ -992,7 +992,13 @@
      * CLAUDE.md §1.6), bukan berarti EA sedang trading aktif saat ini juga.
      */
     function renderConnections() {
-      var list = state.connections || [];
+      var list = (state.connections || []).slice();
+      // Setiap Master selalu punya kartu, walau EA-nya belum pernah terhubung.
+      var masters = (state.config && Array.isArray(state.config.masters)) ? state.config.masters : [];
+      masters.forEach(function (m) {
+        if (list.some(function (c) { return c.is_master && c.master_id === m.id; })) return;
+        list.push({ label: 'EA ' + m.name, is_master: true, master_id: m.id, pair: '', last_seen: null, online: false, never: true });
+      });
       el.connectionsGrid.innerHTML = '';
       if (list.length === 0) {
         el.connectionsGrid.appendChild(el.connectionsEmpty);
@@ -1003,9 +1009,9 @@
       sorted.forEach(function (c) {
         var card = document.createElement('div');
         card.className = 'flex items-center justify-between rounded-xl border border-slate-800 bg-slate-900/60 p-4';
-        var dotColor = c.online ? 'bg-emerald-400' : 'bg-red-500';
-        var statusText = c.online ? 'Online' : 'Offline';
-        var statusColor = c.online ? 'text-emerald-400' : 'text-red-400';
+        var dotColor = c.online ? 'bg-emerald-400' : (c.never ? 'bg-slate-500' : 'bg-red-500');
+        var statusText = c.never ? 'Belum pernah terhubung' : (c.online ? 'Online' : 'Offline');
+        var statusColor = c.online ? 'text-emerald-400' : (c.never ? 'text-slate-400' : 'text-red-400');
         var badge = c.is_master
           ? '<span class="rounded-full bg-accent/15 px-1.5 py-0.5 text-[10px] font-semibold text-accent">MASTER</span>'
           : '<span class="rounded-full bg-slate-700/50 px-1.5 py-0.5 text-[10px] font-semibold text-slate-300">FOLLOWER</span>';
@@ -1015,7 +1021,8 @@
               '<p class="truncate text-sm font-semibold text-white">' + escapeHtml(c.label || '-') + '</p>' +
               badge +
             '</div>' +
-            '<p class="text-xs text-slate-500">Pair: ' + escapeHtml(c.pair || '-') + ' &middot; Terakhir: ' + escapeHtml(fmtDateTime(c.last_seen)) + '</p>' +
+            '<p class="text-xs text-slate-500">' + (c.never ? 'Pasang EA_Master dengan token Master ini' :
+              'Pair: ' + escapeHtml(c.pair || '-') + ' &middot; Terakhir: ' + escapeHtml(fmtDateTime(c.last_seen))) + '</p>' +
           '</div>' +
           '<div class="flex shrink-0 items-center gap-2 pl-2">' +
             '<span class="' + statusColor + ' text-xs font-semibold">' + statusText + '</span>' +
@@ -1138,7 +1145,8 @@
           '<div class="grid grid-cols-1 gap-2 sm:grid-cols-3">' +
             '<input data-m-name value="' + escapeHtml(m.name) + '" maxlength="60" class="rounded-lg border border-slate-700 bg-slate-950 px-3 py-1.5 text-sm text-white outline-none focus:border-accent">' +
             '<select data-m-strategy class="rounded-lg border border-slate-700 bg-slate-950 px-3 py-1.5 text-sm text-white outline-none focus:border-accent">' + strategyOptionsHtml(m.strategy) + '</select>' +
-            '<div class="flex items-center gap-2 text-xs">Status EA: ' + online + '</div>' +
+            '<div class="flex flex-col gap-0.5 text-xs"><span>Status EA: ' + online + '</span>' +
+              '<span class="text-slate-400">Model aktif: <span class="font-mono text-cyan-300">' + escapeHtml(m.effective_ai_model || '-') + '</span></span></div>' +
           '</div>' +
           '<div class="mt-2 grid grid-cols-1 gap-2 text-xs sm:grid-cols-3">' +
             '<label class="flex items-center gap-2 text-slate-400">Maks entry/hari' +
@@ -1222,7 +1230,10 @@
         state.config = data.config || state.config;
         renderMasters();
         renderFollowersTable();
-        showToast(act === 'regen' ? 'Token baru dibuat -- isi di input EaSecurityToken EA Master tersebut.' : 'Master diperbarui.', 'success');
+        var saved = (state.config.masters || []).find(function (x) { return x.id === id; }) || {};
+        showToast(act === 'regen' ? 'Token baru dibuat -- isi di input EaSecurityToken EA Master tersebut.'
+          : 'Master diperbarui. Model aktif: ' + (saved.effective_ai_model || '-'), 'success');
+        renderConnections();
       }).catch(function (err) { showToast(err.message || 'Aksi gagal.', 'error'); })
         .finally(function () { btn.disabled = false; });
     });

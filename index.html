@@ -460,14 +460,13 @@
       const current = masters.find(function (m) { return m.id === currentMasterId; });
       document.getElementById('masterStrategy').innerHTML = current
         ? '<span class="font-semibold text-white">' + escapeHtml(current.name) + '</span>' +
-          (current.strategy_label ? ' &middot; Strategi: ' + escapeHtml(current.strategy_label) : '') +
           (current.ai_model ? ' &middot; Model AI: <span class="font-mono text-cyan-300">' + escapeHtml(current.ai_model) + '</span>' : '')
         : '';
       // Pilihan Master di form "Ngikut".
       const sel = document.getElementById('followMaster');
       const prev = sel.value;
       sel.innerHTML = masters.map(function (m) {
-        return '<option value="' + escapeHtml(m.id) + '">' + escapeHtml(m.name) + (m.strategy_label ? ' — ' + escapeHtml(m.strategy_label) : '') + '</option>';
+        return '<option value="' + escapeHtml(m.id) + '">' + escapeHtml(m.name) + (m.ai_model ? ' — ' + escapeHtml(m.ai_model) : '') + '</option>';
       }).join('');
       sel.value = prev || currentMasterId;
       document.getElementById('followMasterWrap').classList.toggle('hidden', masters.length < 2);
