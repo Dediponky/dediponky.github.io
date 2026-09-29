@@ -808,11 +808,19 @@
           url += '&' + encodeURIComponent(k) + '=' + encodeURIComponent(extraParams[k]);
         });
       }
-      return fetch(url).then(function (res) {
-        return res.json().catch(function () {
-          throw new Error('Respons server bukan JSON valid (HTTP ' + res.status + ')');
+      // GET tidak mengubah apa pun: kalau pengalihan Google membalas 404/HTML,
+      // aman diulang (maks 3x, jeda 1,5 s lalu 3 s) sebelum dianggap gagal.
+      function attempt(left) {
+        return fetch(url).then(function (res) {
+          return res.json().catch(function () {
+            throw new Error('Respons server bukan JSON valid (HTTP ' + res.status + ')');
+          });
+        }).catch(function (err) {
+          if (left <= 1) throw err;
+          return new Promise(function (r) { setTimeout(r, (4 - left) * 1500); }).then(function () { return attempt(left - 1); });
         });
-      });
+      }
+      return attempt(3);
     }
 
     function adminPost(action, fields) {

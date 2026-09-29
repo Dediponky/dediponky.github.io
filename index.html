@@ -802,6 +802,35 @@
       el.fetchError.classList.remove('hidden');
     }
 
+    // Google Apps Script membalas lewat pengalihan ke script.googleusercontent.com
+    // yang sesekali menjawab 404 / halaman HTML walau backend sehat. Permintaan
+    // seperti itu diulang otomatis dengan jeda singkat sebelum dianggap gagal.
+    const DASHBOARD_RETRIES = 3;
+
+    function fetchDashboardWithRetry(attemptsLeft) {
+      return fetch(GAS_WEB_APP_URL + '?action=' + DASHBOARD_ACTION + '&limit=' + HISTORY_FETCH_LIMIT)
+        .then(function (res) {
+          if (!res.ok) throw new Error('HTTP ' + res.status);
+          return res.text();
+        })
+        .then(function (text) {
+          let data;
+          try { data = JSON.parse(text); } catch (e) { throw new Error('Balasan server bukan data (gangguan Google sementara)'); }
+          if (!data || data.success !== true) {
+            const err = new Error((data && data.error) || 'Response tidak valid dari server');
+            err.fatal = true; // jawaban backend sendiri -- tidak perlu diulang
+            throw err;
+          }
+          return data;
+        })
+        .catch(function (err) {
+          if (err.fatal || attemptsLeft <= 1) throw err;
+          const wait = (DASHBOARD_RETRIES - attemptsLeft + 1) * 1500;
+          return new Promise(function (resolve) { setTimeout(resolve, wait); })
+            .then(function () { return fetchDashboardWithRetry(attemptsLeft - 1); });
+        });
+    }
+
     function fetchDashboard() {
       if (!GAS_WEB_APP_URL) {
         el.configWarning.classList.remove('hidden');
@@ -814,15 +843,8 @@
       // PENTING (CLAUDE.md §5.1 gotcha CORS): ini request GET biasa tanpa
       // header Content-Type manual apapun, supaya tetap "simple request"
       // dan tidak memicu preflight OPTIONS yang tidak bisa dijawab GAS.
-      fetch(GAS_WEB_APP_URL + '?action=' + DASHBOARD_ACTION + '&limit=' + HISTORY_FETCH_LIMIT)
-        .then(function (res) {
-          if (!res.ok) throw new Error('HTTP ' + res.status);
-          return res.json();
-        })
+      fetchDashboardWithRetry(DASHBOARD_RETRIES)
         .then(function (data) {
-          if (!data || data.success !== true) {
-            throw new Error((data && data.error) || 'Response tidak valid dari server');
-          }
           setFetchError(null);
           lastDashboard = data;
           showCurrentMaster();
@@ -830,7 +852,13 @@
           el.lastUpdatedBadge.classList.remove('hidden');
         })
         .catch(function (err) {
-          setFetchError(err.message || 'Terjadi kesalahan saat mengambil data.');
+          if (lastDashboard) {
+            // Data sebelumnya tetap ditampilkan; cukup tandai update tertunda.
+            el.lastUpdatedBadge.textContent = 'Update tertunda (server sibuk) -- data terakhir tetap ditampilkan';
+            el.lastUpdatedBadge.classList.remove('hidden');
+          } else {
+            setFetchError(err.message || 'Terjadi kesalahan saat mengambil data.');
+          }
         })
         .finally(function () {
           hasLoadedOnce = true;
