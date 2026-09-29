@@ -122,7 +122,7 @@
     <section id="masterTabsSection" class="mb-5 hidden">
       <div id="masterTabs" role="tablist" aria-label="Pilih portofolio Master"
            class="inline-flex flex-wrap gap-1 rounded-lg border border-slate-800 bg-slate-900/60 p-1 text-sm font-semibold"></div>
-      <p id="masterStrategy" class="mt-2 text-xs text-slate-400"></p>
+      <p id="masterStrategy" class="mt-2 text-sm text-slate-400"></p>
     </section>
 
     <!-- ===================================================================
@@ -449,7 +449,8 @@
       const section = document.getElementById('masterTabsSection');
       const tabs = document.getElementById('masterTabs');
       if (!masters.some(function (m) { return m.id === currentMasterId; })) currentMasterId = masters[0].id;
-      section.classList.toggle('hidden', masters.length < 2);
+      section.classList.remove('hidden');
+      tabs.classList.toggle('hidden', masters.length < 2);
       tabs.innerHTML = masters.map(function (m) {
         const active = m.id === currentMasterId;
         return '<button type="button" role="tab" aria-selected="' + active + '" data-master="' + escapeHtml(m.id) + '" ' +
@@ -457,7 +458,11 @@
           escapeHtml(m.name) + '</button>';
       }).join('');
       const current = masters.find(function (m) { return m.id === currentMasterId; });
-      document.getElementById('masterStrategy').textContent = current && current.strategy_label ? 'Strategi: ' + current.strategy_label : '';
+      document.getElementById('masterStrategy').innerHTML = current
+        ? '<span class="font-semibold text-white">' + escapeHtml(current.name) + '</span>' +
+          (current.strategy_label ? ' &middot; Strategi: ' + escapeHtml(current.strategy_label) : '') +
+          (current.ai_model ? ' &middot; Model AI: <span class="font-mono text-cyan-300">' + escapeHtml(current.ai_model) + '</span>' : '')
+        : '';
       // Pilihan Master di form "Ngikut".
       const sel = document.getElementById('followMaster');
       const prev = sel.value;

@@ -1147,6 +1147,14 @@
             '<label class="flex items-center gap-2 text-slate-400">Stop setelah loss/hari' +
               '<input data-m-losses type="number" min="0" max="10" step="1" value="' + (m.max_losses_day || 0) + '" class="w-16 rounded border border-slate-700 bg-slate-950 px-2 py-1 text-white">' +
               '<span class="text-slate-500">(0 = bebas)</span></label>' +
+            '<label class="flex items-center gap-2 text-slate-400 sm:col-span-2">Model AI' +
+              '<input data-m-model value="' + escapeHtml(m.ai_model || '') + '" maxlength="80" placeholder="kosong = model global (' + escapeHtml((state.config && state.config.ai_model) || '-') + ')" class="w-full rounded border border-slate-700 bg-slate-950 px-2 py-1 text-white"></label>' +
+            '<label class="flex items-center gap-2 text-slate-400">Provider' +
+              '<select data-m-provider class="rounded border border-slate-700 bg-slate-950 px-2 py-1 text-white">' +
+                ['', 'openai', 'anthropic', 'gemini'].map(function (p) {
+                  return '<option value="' + p + '"' + ((m.ai_provider || '') === p ? ' selected' : '') + '>' + (p || 'global') + '</option>';
+                }).join('') +
+              '</select></label>' +
             '<label class="flex items-center gap-2 text-slate-400" title="EA v4: posisi dibuka tanpa TP, 50% ditutup di +2R, sisanya SL mengikuti swing M15">' +
               '<input data-m-runner type="checkbox"' + (m.runner ? ' checked' : '') + ' class="h-4 w-4 accent-cyan-400">' +
               'Runner: 50% di +2R, sisanya trailing</label>' +
@@ -1196,7 +1204,9 @@
                                             strategy: row.querySelector('[data-m-strategy]').value,
                                             max_trades_day: Number(row.querySelector('[data-m-trades]').value) || 0,
                                             max_losses_day: Number(row.querySelector('[data-m-losses]').value) || 0,
-                                            runner: row.querySelector('[data-m-runner]').checked });
+                                            runner: row.querySelector('[data-m-runner]').checked,
+                                            ai_model: row.querySelector('[data-m-model]').value.trim(),
+                                            ai_provider: row.querySelector('[data-m-provider]').value });
       } else if (act === 'regen') {
         if (!window.confirm('Buat token baru untuk ' + m.name + '? EA dengan token lama langsung terputus sampai token baru diisi.')) return;
         call = adminPost('regenerate_master_token', { id: id });
