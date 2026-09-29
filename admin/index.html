@@ -317,6 +317,19 @@
               <span class="block text-[11px] text-slate-500">Kalau AI menjawab HOLD sambil menunggu level tertentu (mis. retest zona), AI tidak ditanya ulang selama harga belum menyentuh level itu &amp; waktunya belum habis -- jawaban HOLD yang sama tidak dibayar berulang. Posisi terbuka selalu ke AI.</span></span>
           </label>
           </div>
+          <div class="rounded-lg border border-slate-800 bg-slate-950/60 p-3">
+            <label for="ruleTradeStyle" class="mb-1 block text-sm font-medium text-white">Gaya trading AI</label>
+            <select id="ruleTradeStyle"
+              class="w-full rounded-lg border border-slate-700 bg-slate-950 px-3 py-2 text-sm text-white outline-none focus:border-accent sm:w-64">
+              <option value="konservatif">Konservatif</option>
+              <option value="normal">Normal</option>
+              <option value="agresif">Agresif</option>
+            </select>
+            <p class="mt-1 text-[11px] text-slate-500"><b>Konservatif</b>: entry hanya saat harga pullback ke zona/fib 50-61.8%, ragu = HOLD (sedikit trade).
+              <b>Normal</b>: + ikut tren lewat break of structure/retest &amp; breakout searah bias D1/H4; rencana tunggu maks 60 menit.
+              <b>Agresif</b>: seperti Normal tapi cukup bias H1 &amp; momentum boleh jadi trigger; rencana tunggu maks 30 menit.
+              SL wajib, R:R minimal, blok berita &amp; maks posisi tetap berlaku di semua gaya.</p>
+          </div>
           <div class="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
             <div>
               <label for="ruleMinRr" class="mb-1 block text-xs font-medium text-slate-300">Risk:Reward minimal</label>
@@ -1058,6 +1071,7 @@
       el.ruleJsonMode.checked = !!rules.json_mode;
       el.ruleGateEnabled.checked = !!rules.gate_enabled;
       el.ruleWaitEnabled.checked = rules.wait_enabled !== false;
+      document.getElementById('ruleTradeStyle').value = rules.trade_style || 'normal';
       Object.keys(RULE_FIELDS).forEach(function (id) {
         var name = RULE_FIELDS[id];
         var input = document.getElementById(id);
@@ -1198,7 +1212,8 @@
       e.preventDefault();
       var submitBtn = el.rulesForm.querySelector('button[type="submit"]');
       var rules = { json_mode: el.ruleJsonMode.checked, gate_enabled: el.ruleGateEnabled.checked,
-                    wait_enabled: el.ruleWaitEnabled.checked };
+                    wait_enabled: el.ruleWaitEnabled.checked,
+                    trade_style: document.getElementById('ruleTradeStyle').value };
       var invalid = null;
       Object.keys(RULE_FIELDS).forEach(function (id) {
         var input = document.getElementById(id);
